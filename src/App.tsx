@@ -17,6 +17,9 @@ interface BusInfo {
   updated_at: string;
   latitude: number | null;
   longitude: number | null;
+  stops_away: number | null;
+  estimated_minutes: number | null;
+  last_stop_name: string | null;
 }
 
 interface BusStop {
@@ -221,9 +224,28 @@ function App() {
     return `${Math.abs(minutes)}分早い`;
   }
 
+  async function refreshTimetable() {
+    try {
+      await invoke("clear_timetable_cache");
+      alert("時刻表キャッシュをクリアしました。次回の検索時に最新の時刻表を取得します。");
+    } catch (err) {
+      console.error("時刻表の更新に失敗しました:", err);
+      alert(`時刻表の更新に失敗しました: ${err}`);
+    }
+  }
+
   return (
     <main className="container">
-      <h1>札幌交通情報</h1>
+      <div className="header">
+        <h1>札幌交通情報</h1>
+        <button
+          className="refresh-timetable-btn"
+          onClick={refreshTimetable}
+          title="時刻表キャッシュをクリアして最新版を取得します"
+        >
+          🔄 時刻表の更新
+        </button>
+      </div>
 
       {/* Bus Search Section */}
       <div className="search-section bus-search">
@@ -417,6 +439,20 @@ function App() {
                           {bus.congestion_level || "不明"}
                         </span>
                       </div>
+                      {bus.stops_away !== null && bus.estimated_minutes !== null && (
+                        <div className="detail-item">
+                          <span className="label">バス位置:</span>
+                          <span className="position-badge">
+                            🚌 あと{bus.stops_away}駅（約{bus.estimated_minutes}分後）
+                          </span>
+                        </div>
+                      )}
+                      {bus.last_stop_name && (
+                        <div className="detail-item">
+                          <span className="label">現在地:</span>
+                          <span className="last-stop-info">{bus.last_stop_name}</span>
+                        </div>
+                      )}
                       {bus.latitude && bus.longitude && (
                         <div className="detail-item">
                           <span className="label">位置:</span>

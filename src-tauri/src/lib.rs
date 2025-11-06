@@ -1,10 +1,13 @@
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 use std::sync::Mutex;
+use rusqlite::{Connection, params};
+use std::path::PathBuf;
 
-// Global state for saved bus stops
+// Global state for saved bus stops and database
 struct AppState {
     saved_stops: Mutex<Vec<BusStop>>,
+    db_path: Mutex<Option<PathBuf>>,
 }
 
 // Data structures for Bus API
@@ -29,6 +32,9 @@ pub struct BusInfo {
     pub updated_at: String,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
+    pub stops_away: Option<i32>,
+    pub estimated_minutes: Option<i32>,
+    pub last_stop_name: Option<String>,
 }
 
 // API Response structures
@@ -295,7 +301,10 @@ pub struct BusStopListResponse {
 
 // Tauri commands
 #[tauri::command]
-async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String> {
+async fn search_buses(
+    request: BusSearchRequest,
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<BusInfo>, String> {
     let client = reqwest::Client::new();
 
     // If station IDs are provided, use Get_search_route API
@@ -346,6 +355,9 @@ async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String>
                     updated_at: chrono::Local::now().to_rfc3339(),
                     latitude: None,
                     longitude: None,
+                    stops_away: None,
+                    estimated_minutes: None,
+                    last_stop_name: None,
                 };
 
                 // Only get real-time data for bus segments (line_type == 10 means bus)
@@ -389,8 +401,27 @@ async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String>
                                     // Update timestamp
                                     bus_info.updated_at = chrono::Local::now().to_rfc3339();
 
-                                    // Note: last_stop can be used to estimate position
-                                    // We could potentially fetch station coordinates here
+                                    // Calculate stops away (how many stops until arrival)
+                                    if next_bus.last_stop_order > 0 {
+                                        let stops_remaining = stop_data.pos - next_bus.last_stop_order;
+                                        if stops_remaining > 0 {
+                                            bus_info.stops_away = Some(stops_remaining);
+
+                                            // Estimate arrival time based on segment time and current position
+                                            // Assume uniform time distribution across stops
+                                            let total_stops = stop_data.pos; // Total stops in route
+                                            if total_stops > 0 {
+                                                let time_per_stop = segment.sec_time / total_stops;
+                                                let estimated_time = (time_per_stop * stops_remaining) / 60; // Convert to minutes
+                                                let estimated_with_delay = estimated_time + next_bus.delay_time;
+                                                bus_info.estimated_minutes = Some(estimated_with_delay.max(0));
+                                            }
+
+                                            // Set last stop name (from last_stop ID)
+                                            // Note: Would need to fetch station name from API, for now use ID
+                                            bus_info.last_stop_name = Some(format!("停留所 #{}", next_bus.last_stop));
+                                        }
+                                    }
 
                                     break;
                                 }
@@ -400,41 +431,74 @@ async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String>
 
                     // Fallback to timetable if no real-time data available
                     if bus_info.arrival_time.is_none() {
-                        let timetable_params = [
-                            ("kind", "0"),
-                            ("start_station_id", request.start_station_id.as_ref().unwrap().as_str()),
-                            ("end_station_id", request.end_station_id.as_ref().unwrap().as_str()),
-                            ("time_from", request.time_from.as_ref().unwrap().as_str()),
-                            ("pattern", &route.pattern),
-                            ("lang", ""),
-                        ];
+                        // Determine dia_flg: 0 = weekday, 1 = Saturday, 2 = Sunday/Holiday
+                        let dia_flg = match current_time.weekday() {
+                            chrono::Weekday::Sat => 1,
+                            chrono::Weekday::Sun => 2,
+                            _ => 0,
+                        };
 
-                        if let Ok(timetable_response) = client
-                            .post("https://ekibus-api.city.sapporo.jp/Get_search_route_timetable")
-                            .form(&timetable_params)
-                            .send()
-                            .await {
+                        // Try to get from cache first
+                        let mut timetable_entries = get_cached_timetable(
+                            &app_handle,
+                            &route.pattern,
+                            &segment.line_id.to_string(),
+                            dia_flg,
+                        ).ok();
 
-                            if let Ok(timetable_data) = timetable_response.json::<SearchRouteTimetableResponse>().await {
-                                // Find the matching route segment in the timetable
-                                for route_item in timetable_data.search_route_timetable.time_table.route_list {
-                                    if route_item.line_id == segment.line_id.to_string() {
-                                        // Look through dia_list for time entries
-                                        for dia in route_item.dia_list {
-                                            // Find the first time entry after current time
-                                            if let Some(time_entry) = dia.time_table.iter()
-                                                .find(|entry| entry.from_time >= current_time_str) {
+                        // If not in cache, fetch from API and save to cache
+                        if timetable_entries.is_none() || timetable_entries.as_ref().unwrap().is_empty() {
+                            let timetable_params = [
+                                ("kind", "0"),
+                                ("start_station_id", request.start_station_id.as_ref().unwrap().as_str()),
+                                ("end_station_id", request.end_station_id.as_ref().unwrap().as_str()),
+                                ("time_from", request.time_from.as_ref().unwrap().as_str()),
+                                ("pattern", &route.pattern),
+                                ("lang", ""),
+                            ];
 
-                                                bus_info.arrival_time = Some(time_entry.from_time.clone());
-                                                bus_info.updated_at = chrono::Local::now().to_rfc3339();
-                                                break;
+                            if let Ok(timetable_response) = client
+                                .post("https://ekibus-api.city.sapporo.jp/Get_search_route_timetable")
+                                .form(&timetable_params)
+                                .send()
+                                .await {
+
+                                if let Ok(timetable_data) = timetable_response.json::<SearchRouteTimetableResponse>().await {
+                                    // Find the matching route segment in the timetable
+                                    for route_item in timetable_data.search_route_timetable.time_table.route_list {
+                                        if route_item.line_id == segment.line_id.to_string() {
+                                            // Look through dia_list for time entries
+                                            for dia in route_item.dia_list {
+                                                if dia.dia_flg == dia_flg {
+                                                    // Save to cache
+                                                    let _ = save_timetable_to_cache(
+                                                        &app_handle,
+                                                        &route.pattern,
+                                                        &segment.line_id.to_string(),
+                                                        &segment.from_id.to_string(),
+                                                        &segment.to_id.to_string(),
+                                                        dia_flg,
+                                                        &dia.time_table,
+                                                    );
+
+                                                    timetable_entries = Some(dia.time_table.clone());
+                                                    break;
+                                                }
                                             }
-                                        }
-                                        if bus_info.arrival_time.is_some() {
                                             break;
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        // Use the timetable data (from cache or API)
+                        if let Some(entries) = timetable_entries {
+                            if let Some(time_entry) = entries.iter()
+                                .find(|entry| entry.from_time >= current_time_str) {
+
+                                bus_info.arrival_time = Some(time_entry.from_time.clone());
+                                bus_info.updated_at = chrono::Local::now().to_rfc3339();
                             }
                         }
                     }
@@ -677,6 +741,115 @@ async fn delete_bus_stop(
     Ok(stops.clone())
 }
 
+// Helper function to get database connection
+fn get_db_connection(app_handle: &tauri::AppHandle) -> Result<Connection, String> {
+    let state = app_handle.state::<AppState>();
+    let db_path_lock = state.db_path.lock()
+        .map_err(|e| format!("Failed to lock db_path: {}", e))?;
+
+    let db_path = db_path_lock.as_ref()
+        .ok_or_else(|| "Database not initialized".to_string())?;
+
+    Connection::open(db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))
+}
+
+// Get cached timetable data
+fn get_cached_timetable(
+    app_handle: &tauri::AppHandle,
+    route_pattern: &str,
+    line_id: &str,
+    dia_flg: i32,
+) -> Result<Vec<TimeTableEntry>, String> {
+    let conn = get_db_connection(app_handle)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT from_time, to_time, note, course_id
+         FROM timetable_cache
+         WHERE route_pattern = ?1 AND line_id = ?2 AND dia_flg = ?3
+         ORDER BY from_time"
+    ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
+
+    let entries = stmt.query_map(params![route_pattern, line_id, dia_flg], |row| {
+        Ok(TimeTableEntry {
+            from_time: row.get(0)?,
+            to_time: row.get(1)?,
+            note: row.get(2)?,
+            fromto: "".to_string(),
+            course_id: row.get::<_, String>(3)?.parse().unwrap_or(0),
+            connect_index: 0,
+            prev_index: 0,
+        })
+    }).map_err(|e| format!("Failed to query timetable: {}", e))?;
+
+    let mut result = Vec::new();
+    for entry in entries {
+        result.push(entry.map_err(|e| format!("Failed to get entry: {}", e))?);
+    }
+
+    Ok(result)
+}
+
+// Save timetable data to cache
+fn save_timetable_to_cache(
+    app_handle: &tauri::AppHandle,
+    route_pattern: &str,
+    line_id: &str,
+    from_id: &str,
+    to_id: &str,
+    dia_flg: i32,
+    entries: &[TimeTableEntry],
+) -> Result<(), String> {
+    let conn = get_db_connection(app_handle)?;
+
+    // First, delete existing entries for this route
+    conn.execute(
+        "DELETE FROM timetable_cache
+         WHERE route_pattern = ?1 AND line_id = ?2 AND dia_flg = ?3",
+        params![route_pattern, line_id, dia_flg],
+    ).map_err(|e| format!("Failed to delete old entries: {}", e))?;
+
+    // Insert new entries
+    let mut stmt = conn.prepare(
+        "INSERT INTO timetable_cache
+         (route_pattern, line_id, from_id, to_id, dia_flg, from_time, to_time, course_id, note)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+    ).map_err(|e| format!("Failed to prepare insert statement: {}", e))?;
+
+    for entry in entries {
+        stmt.execute(params![
+            route_pattern,
+            line_id,
+            from_id,
+            to_id,
+            dia_flg,
+            &entry.from_time,
+            &entry.to_time,
+            entry.course_id.to_string(),
+            &entry.note,
+        ]).map_err(|e| format!("Failed to insert entry: {}", e))?;
+    }
+
+    Ok(())
+}
+
+// Clear all timetable cache (for refresh button)
+#[tauri::command]
+async fn clear_timetable_cache(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let conn = get_db_connection(&app_handle)?;
+
+    conn.execute("DELETE FROM timetable_cache", [])
+        .map_err(|e| format!("Failed to clear cache: {}", e))?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO cache_metadata (key, value, updated_at)
+         VALUES ('last_cleared', datetime('now'), datetime('now'))",
+        [],
+    ).map_err(|e| format!("Failed to update metadata: {}", e))?;
+
+    Ok(())
+}
+
 #[tauri::command]
 async fn init_database(app_handle: tauri::AppHandle) -> Result<(), String> {
     let app_data_dir = app_handle
@@ -687,6 +860,56 @@ async fn init_database(app_handle: tauri::AppHandle) -> Result<(), String> {
     std::fs::create_dir_all(&app_data_dir)
         .map_err(|e| format!("Failed to create app data dir: {}", e))?;
 
+    // Initialize SQLite database for timetable caching
+    let db_path = app_data_dir.join("timetable_cache.db");
+    let conn = Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+
+    // Create timetable cache table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS timetable_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            route_pattern TEXT NOT NULL,
+            line_id TEXT NOT NULL,
+            from_id TEXT NOT NULL,
+            to_id TEXT NOT NULL,
+            dia_flg INTEGER NOT NULL,
+            from_time TEXT NOT NULL,
+            to_time TEXT,
+            course_id TEXT,
+            note TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| format!("Failed to create timetable_cache table: {}", e))?;
+
+    // Create index for faster queries
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_timetable_route
+            ON timetable_cache(route_pattern, line_id, dia_flg)",
+        [],
+    )
+    .map_err(|e| format!("Failed to create index: {}", e))?;
+
+    // Create metadata table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cache_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| format!("Failed to create cache_metadata table: {}", e))?;
+
+    // Store database path in app state
+    if let Some(state) = app_handle.try_state::<AppState>() {
+        if let Ok(mut db_path_lock) = state.db_path.lock() {
+            *db_path_lock = Some(db_path);
+        }
+    }
+
     Ok(())
 }
 
@@ -695,6 +918,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             saved_stops: Mutex::new(Vec::new()),
+            db_path: Mutex::new(None),
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
@@ -708,7 +932,8 @@ pub fn run() {
             save_bus_stop,
             get_saved_bus_stops,
             delete_bus_stop,
-            init_database
+            init_database,
+            clear_timetable_cache
         ])
         .setup(|app| {
             // Initialize database on startup
