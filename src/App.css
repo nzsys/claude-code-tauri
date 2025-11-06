@@ -235,6 +235,168 @@ button:disabled {
   color: #7f8c8d;
 }
 
+/* Station Search Styles */
+.station-search {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.station-search h2 {
+  color: white;
+  border-bottom-color: rgba(255, 255, 255, 0.3);
+}
+
+.station-search label {
+  color: white !important;
+}
+
+.autocomplete-wrapper {
+  position: relative;
+}
+
+.suggestions-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 2px solid #3498db;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.suggestion-item {
+  padding: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #ecf0f1;
+  color: #2c3e50;
+  transition: background-color 0.2s;
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:hover {
+  background: #f8f9fa;
+}
+
+.selected-station {
+  margin-top: 15px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: white;
+}
+
+/* Timetable Styles */
+.timetable-section {
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 30px;
+}
+
+.line-card {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.line-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.line-header h3 {
+  margin: 0;
+  font-size: 1.5em;
+}
+
+.line-header .station-name {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.9em;
+}
+
+.courses h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 1.1em;
+  opacity: 0.9;
+}
+
+.course-item {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 10px 15px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.course-item:last-child {
+  margin-bottom: 0;
+}
+
+.course-name {
+  font-weight: 500;
+}
+
+.nearby-stations {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 12px;
+  margin-top: 20px;
+}
+
+.nearby-stations h3 {
+  margin-top: 0;
+  color: #2c3e50;
+  border-bottom: 2px solid #3498db;
+  padding-bottom: 10px;
+}
+
+.stations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 15px;
+}
+
+.station-item {
+  background: white;
+  padding: 12px;
+  border-radius: 8px;
+  border-left: 4px solid #3498db;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.station-name-jp {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.95em;
+}
+
+.station-phonic {
+  font-size: 0.8em;
+  color: #7f8c8d;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #ecf0f1;
@@ -282,6 +444,27 @@ button:disabled {
 
   .no-results {
     background: #2c3e50;
+  }
+
+  .timetable-section,
+  .nearby-stations {
+    background: #2c3e50;
+  }
+
+  .nearby-stations h3 {
+    color: #ecf0f1;
+  }
+
+  .station-item {
+    background: #34495e;
+  }
+
+  .station-name-jp {
+    color: #ecf0f1;
+  }
+
+  .suggestion-item {
+    color: #2c3e50;
   }
 }
 

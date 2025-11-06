@@ -21,6 +21,45 @@ interface BusStop {
   longitude: number | null;
 }
 
+interface StationPrediction {
+  station_id: number;
+  company_id: number;
+  name: string;
+}
+
+interface Station {
+  station_id: number;
+  name: string;
+  phonic: string;
+}
+
+interface Course {
+  line_id: number;
+  course_id: number;
+  course_name: string;
+  station_id: number;
+  station_name: string;
+  pos: number;
+  st_flag: number;
+  stop_no: string;
+  company_id: number;
+}
+
+interface StationLine {
+  line_id: number;
+  line_name: string;
+  station_id: number;
+  station_name: string;
+  company_id: number;
+  course_list: Course[];
+}
+
+interface StationLineListResponse {
+  result: string;
+  station_linelist: StationLine[];
+  station_list: Station[];
+}
+
 function App() {
   const [destination, setDestination] = useState("");
   const [timeFrom, setTimeFrom] = useState("");
@@ -29,6 +68,12 @@ function App() {
   const [busStops, setBusStops] = useState<BusStop[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Station search states
+  const [stationSearchWord, setStationSearchWord] = useState("");
+  const [stationSuggestions, setStationSuggestions] = useState<StationPrediction[]>([]);
+  const [selectedStation, setSelectedStation] = useState<StationPrediction | null>(null);
+  const [timetableData, setTimetableData] = useState<StationLineListResponse | null>(null);
 
   useEffect(() => {
     loadBusStops();
@@ -82,6 +127,48 @@ function App() {
     }
   }
 
+  async function searchStations(searchWord: string) {
+    if (!searchWord || searchWord.length === 0) {
+      setStationSuggestions([]);
+      return;
+    }
+
+    try {
+      const suggestions = await invoke<StationPrediction[]>(
+        "search_station_suggestions",
+        {
+          searchWord: searchWord,
+        }
+      );
+      setStationSuggestions(suggestions);
+    } catch (err) {
+      console.error("駅検索に失敗しました:", err);
+      setStationSuggestions([]);
+    }
+  }
+
+  async function selectStation(station: StationPrediction) {
+    setSelectedStation(station);
+    setStationSearchWord(station.name);
+    setStationSuggestions([]);
+    setLoading(true);
+    setError("");
+
+    try {
+      const data = await invoke<StationLineListResponse>(
+        "get_station_timetable",
+        {
+          stationId: station.station_id,
+        }
+      );
+      setTimetableData(data);
+    } catch (err) {
+      setError(`時刻表の取得に失敗しました: ${err}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function getCongestionColor(level: string | null): string {
     if (!level) return "gray";
     switch (level) {
@@ -105,7 +192,85 @@ function App() {
 
   return (
     <main className="container">
-      <h1>札幌バストラッカー</h1>
+      <h1>札幌交通情報</h1>
+
+      {/* Station Search Section */}
+      <div className="search-section station-search">
+        <h2>駅・路線検索</h2>
+        <div className="form-group">
+          <label htmlFor="station-search">駅名を入力:</label>
+          <div className="autocomplete-wrapper">
+            <input
+              id="station-search"
+              type="text"
+              value={stationSearchWord}
+              onChange={(e) => {
+                setStationSearchWord(e.target.value);
+                searchStations(e.target.value);
+              }}
+              placeholder="例: 大通、札幌駅"
+            />
+            {stationSuggestions.length > 0 && (
+              <div className="suggestions-dropdown">
+                {stationSuggestions.map((station) => (
+                  <div
+                    key={`${station.station_id}-${station.company_id}`}
+                    className="suggestion-item"
+                    onClick={() => selectStation(station)}
+                  >
+                    {station.name}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {selectedStation && (
+          <div className="selected-station">
+            <strong>選択中の駅:</strong> {selectedStation.name}
+          </div>
+        )}
+
+        {error && <div className="error">{error}</div>}
+      </div>
+
+      {/* Timetable Display Section */}
+      {timetableData && (
+        <div className="timetable-section">
+          <h2>路線情報</h2>
+          {timetableData.station_linelist.map((line) => (
+            <div key={line.line_id} className="line-card">
+              <div className="line-header">
+                <h3>{line.line_name}</h3>
+                <span className="station-name">{line.station_name}</span>
+              </div>
+              <div className="courses">
+                <h4>方面:</h4>
+                {line.course_list.map((course) => (
+                  <div key={course.course_id} className="course-item">
+                    <span className="course-name">{course.course_name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {timetableData.station_list.length > 0 && (
+            <div className="nearby-stations">
+              <h3>この路線の駅一覧</h3>
+              <div className="stations-grid">
+                {timetableData.station_list.map((station) => (
+                  <div key={station.station_id} className="station-item">
+                    <span className="station-name-jp">{station.name}</span>
+                    <span className="station-phonic">{station.phonic}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="search-section">
         <h2>バス検索</h2>

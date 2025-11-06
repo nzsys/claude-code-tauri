@@ -30,6 +30,57 @@ pub struct BusSearchRequest {
     pub time_to: Option<String>,
 }
 
+// Data structures for Station/Transit API
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StationPrediction {
+    pub station_id: i32,
+    pub company_id: i32,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StationPredictionResponse {
+    pub result: String,
+    pub route_prediction: Vec<StationPrediction>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Station {
+    pub station_id: i32,
+    pub name: String,
+    pub phonic: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Course {
+    pub line_id: i32,
+    pub course_id: i32,
+    pub course_name: String,
+    pub station_id: i32,
+    pub station_name: String,
+    pub pos: i32,
+    pub st_flag: i32,
+    pub stop_no: String,
+    pub company_id: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StationLine {
+    pub line_id: i32,
+    pub line_name: String,
+    pub station_id: i32,
+    pub station_name: String,
+    pub company_id: i32,
+    pub course_list: Vec<Course>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StationLineListResponse {
+    pub result: String,
+    pub station_linelist: Vec<StationLine>,
+    pub station_list: Vec<Station>,
+}
+
 // Tauri commands
 #[tauri::command]
 async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String> {
@@ -100,6 +151,56 @@ async fn fetch_bus_location_data(
 }
 
 #[tauri::command]
+async fn search_station_suggestions(search_word: String) -> Result<Vec<StationPrediction>, String> {
+    let client = reqwest::Client::new();
+
+    let mut params = std::collections::HashMap::new();
+    params.insert("kind", "0");
+    params.insert("search_flg", "1");
+    params.insert("search_word", &search_word);
+    params.insert("pos_flg", "0");
+    params.insert("lang", "");
+
+    let response = client
+        .post("https://ekibus-api.city.sapporo.jp/get_route_prediction")
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch station suggestions: {}", e))?;
+
+    let data: StationPredictionResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(data.route_prediction)
+}
+
+#[tauri::command]
+async fn get_station_timetable(station_id: i32) -> Result<StationLineListResponse, String> {
+    let client = reqwest::Client::new();
+
+    let mut params = std::collections::HashMap::new();
+    params.insert("kind", "0");
+    params.insert("station_id", &station_id.to_string());
+    params.insert("lang", "");
+
+    let response = client
+        .post("https://ekibus-api.city.sapporo.jp/Get_station_linelist")
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch station timetable: {}", e))?;
+
+    let data: StationLineListResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(data)
+}
+
+#[tauri::command]
 async fn init_database(app_handle: tauri::AppHandle) -> Result<(), String> {
     let app_data_dir = app_handle
         .path()
@@ -122,6 +223,8 @@ pub fn run() {
             search_buses,
             get_bus_stops,
             fetch_bus_location_data,
+            search_station_suggestions,
+            get_station_timetable,
             init_database
         ])
         .setup(|app| {
