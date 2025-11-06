@@ -378,10 +378,18 @@ async fn search_buses(
                         .await {
 
                         if let Ok(busstop_data) = busstop_response.json::<BusStopListResponse>().await {
+                            println!("Get_busstop_list returned {} stop data entries", busstop_data.data.len());
+
                             // Find the first bus arriving after current time
-                            for stop_data in busstop_data.data {
+                            for stop_data in &busstop_data.data {
+                                println!("Checking stop_data: line_id={}, station_id={}, time_list.len()={}",
+                                    stop_data.line_id, stop_data.station_id, stop_data.time_list.len());
+
                                 if let Some(next_bus) = stop_data.time_list.iter()
                                     .find(|bus| bus.time >= current_time_str) {
+
+                                    println!("Found next bus: time={}, delay={}, status={}",
+                                        next_bus.time, next_bus.delay_time, next_bus.bus_status);
 
                                     // Set arrival time
                                     bus_info.arrival_time = Some(next_bus.time.clone());
@@ -425,19 +433,28 @@ async fn search_buses(
                                     }
 
                                     break;
+                                } else {
+                                    println!("No bus found after current time {} in this stop_data", current_time_str);
                                 }
                             }
+                        } else {
+                            println!("Failed to parse Get_busstop_list response");
                         }
+                    } else {
+                        println!("Failed to call Get_busstop_list API");
                     }
 
                     // Fallback to timetable if no real-time data available
                     if bus_info.arrival_time.is_none() {
+                        println!("No real-time data available, falling back to timetable");
+
                         // Determine dia_flg: 0 = weekday, 1 = Saturday, 2 = Sunday/Holiday
                         let dia_flg = match current_time.weekday() {
                             chrono::Weekday::Sat => 1,
                             chrono::Weekday::Sun => 2,
                             _ => 0,
                         };
+                        println!("Using dia_flg={} for weekday {:?}", dia_flg, current_time.weekday());
 
                         // Try to get from cache first
                         let mut timetable_entries = get_cached_timetable(
@@ -447,8 +464,12 @@ async fn search_buses(
                             dia_flg,
                         ).ok();
 
+                        println!("Cache lookup result: {} entries",
+                            timetable_entries.as_ref().map(|e| e.len()).unwrap_or(0));
+
                         // If not in cache, fetch from API and save to cache
                         if timetable_entries.is_none() || timetable_entries.as_ref().unwrap().is_empty() {
+                            println!("Fetching timetable from API...");
                             let timetable_params = [
                                 ("kind", "0"),
                                 ("start_station_id", request.start_station_id.as_ref().unwrap().as_str()),
@@ -465,12 +486,26 @@ async fn search_buses(
                                 .await {
 
                                 if let Ok(timetable_data) = timetable_response.json::<SearchRouteTimetableResponse>().await {
+                                    println!("Timetable API returned {} route items",
+                                        timetable_data.search_route_timetable.time_table.route_list.len());
+
                                     // Find the matching route segment in the timetable
                                     for route_item in timetable_data.search_route_timetable.time_table.route_list {
+                                        println!("Checking route_item: line_id={}, dia_list.len()={}",
+                                            route_item.line_id, route_item.dia_list.len());
+
                                         if route_item.line_id == segment.line_id.to_string() {
+                                            println!("Matched line_id! Looking for dia_flg={}", dia_flg);
+
                                             // Look through dia_list for time entries
                                             for dia in route_item.dia_list {
+                                                println!("Checking dia: dia_flg={}, time_table.len()={}",
+                                                    dia.dia_flg, dia.time_table.len());
+
                                                 if dia.dia_flg == dia_flg {
+                                                    println!("Matched dia_flg! Saving {} entries to cache",
+                                                        dia.time_table.len());
+
                                                     // Save to cache
                                                     let _ = save_timetable_to_cache(
                                                         &app_handle,
@@ -489,18 +524,30 @@ async fn search_buses(
                                             break;
                                         }
                                     }
+                                } else {
+                                    println!("Failed to parse timetable API response");
                                 }
+                            } else {
+                                println!("Failed to call timetable API");
                             }
                         }
 
                         // Use the timetable data (from cache or API)
                         if let Some(entries) = timetable_entries {
+                            println!("Using {} timetable entries, looking for time after {}",
+                                entries.len(), current_time_str);
+
                             if let Some(time_entry) = entries.iter()
                                 .find(|entry| entry.from_time >= current_time_str) {
 
+                                println!("Found timetable entry: from_time={}", time_entry.from_time);
                                 bus_info.arrival_time = Some(time_entry.from_time.clone());
                                 bus_info.updated_at = chrono::Local::now().to_rfc3339();
+                            } else {
+                                println!("No timetable entry found after current time");
                             }
+                        } else {
+                            println!("No timetable entries available");
                         }
                     }
                 }
