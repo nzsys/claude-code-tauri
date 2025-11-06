@@ -403,12 +403,8 @@ async fn search_buses(
 
                                 // Find the first bus arriving after current time
                                 for stop_data in &busstop_data.data {
-                                        stop_data.line_id, stop_data.station_id, stop_data.time_list.len());
-
                                     if let Some(next_bus) = stop_data.time_list.iter()
                                         .find(|bus| bus.time >= current_time_str) {
-
-                                            next_bus.time, next_bus.delay_time, next_bus.bus_status);
 
                                         // Set arrival time
                                         bus_info.arrival_time = Some(next_bus.time.clone());
@@ -452,14 +448,13 @@ async fn search_buses(
                                         }
 
                                         break;
-                                    } else {
                                     }
                                 }
                             }
-                            Err(e) => {
+                            Err(_e) => {
+                                // Failed to parse response, continue without real-time data
                             }
                         }
-                    } else {
                     }
 
                     // Fallback to timetable if no real-time data available
@@ -482,8 +477,6 @@ async fn search_buses(
                             preferred_dia_flg,
                         ).ok();
 
-                            timetable_entries.as_ref().map(|e| e.len()).unwrap_or(0));
-
                         // If not in cache, fetch from API and save to cache
                         if timetable_entries.is_none() || timetable_entries.as_ref().unwrap().is_empty() {
                             let timetable_params = [
@@ -502,23 +495,15 @@ async fn search_buses(
                                 .await {
 
                                 if let Ok(timetable_data) = timetable_response.json::<SearchRouteTimetableResponse>().await {
-                                        timetable_data.search_route_timetable.time_table.route_list.len());
-
                                     // Find the matching route segment in the timetable
                                     for route_item in timetable_data.search_route_timetable.time_table.route_list {
-                                            route_item.line_id, route_item.dia_list.len());
-
                                         if route_item.line_id == segment.line_id.to_string() {
-
                                             // Look through dia_list for time entries
                                             // Try preferred dia_flg first, then fallback to first available
                                             let mut found_dia = None;
                                             for dia in &route_item.dia_list {
-                                                    dia.dia_flg, dia.time_table.len());
-
                                                 if dia.dia_flg == preferred_dia_flg {
                                                     found_dia = Some(dia);
-                                                        dia.time_table.len());
                                                     break;
                                                 }
                                             }
@@ -526,11 +511,9 @@ async fn search_buses(
                                             // If preferred dia_flg not found, use first available
                                             if found_dia.is_none() && !route_item.dia_list.is_empty() {
                                                 found_dia = Some(&route_item.dia_list[0]);
-                                                    route_item.dia_list[0].dia_flg);
                                             }
 
                                             if let Some(dia) = found_dia {
-                                                    dia.time_table.len());
 
                                                 // Save to cache
                                                 let _ = save_timetable_to_cache(
@@ -548,9 +531,7 @@ async fn search_buses(
                                             break;
                                         }
                                     }
-                                } else {
                                 }
-                            } else {
                             }
                         }
 
@@ -559,8 +540,6 @@ async fn search_buses(
                         if let Some(entries) = timetable_entries {
                             let one_hour_later = current_time + chrono::Duration::hours(1);
                             let one_hour_later_str = one_hour_later.format("%H:%M").to_string();
-
-                                entries.len(), current_time_str, one_hour_later_str);
 
                             let matching_entries: Vec<_> = entries.iter()
                                 .filter(|entry| entry.from_time >= current_time_str && entry.from_time <= one_hour_later_str)
