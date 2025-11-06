@@ -72,6 +72,8 @@ struct BusData {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BusSearchRequest {
+    pub start_station_id: Option<String>,
+    pub end_station_id: Option<String>,
     pub destination: Option<String>,
     pub time_from: Option<String>,
     pub time_to: Option<String>,
@@ -157,7 +159,7 @@ pub struct WalkData {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Route {
+pub struct RouteInfo {
     pub total_time: i32,
     pub total_connect_time: i32,
     pub line_count: i32,
@@ -171,119 +173,15 @@ pub struct Route {
     pub walk_data: WalkData,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SearchRoute {
-    pub route: Vec<Route>,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchRouteResponse {
     pub result: String,
-    pub search_route: SearchRoute,
-}
-
-// Timetable API structures (for Get_search_route_timetable)
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TimeTableEntry {
-    pub from_time: String,
-    pub to_time: String,
-    pub note: String,
-    pub fromto: String,
-    pub course_id: i64,
-    pub connect_index: i32,
-    pub prev_index: i32,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct DiaList {
-    pub dia_flg: i32,
-    pub time_table: Vec<TimeTableEntry>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TimetableCourse {
-    pub course_id: i64,
-    pub course_name: String,
-    pub line_id: i64,
-    pub line_name: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RouteListForTimetable {
-    pub line_id: String,
-    pub from_id: String,
-    pub to_id: String,
-    pub connect_time: i32,
-    pub connect_distance: i32,
-    pub line_name: String,
-    pub from_name: String,
-    pub to_name: String,
-    pub course_list: Vec<TimetableCourse>,
-    pub dia_list: Vec<DiaList>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TimeTable {
-    pub from_id: String,
-    pub to_id: String,
-    pub pattern: String,
-    pub from_name: String,
-    pub to_name: String,
-    pub day_type: i32,
-    pub route_list: Vec<RouteListForTimetable>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SearchRouteTimetable {
-    pub time_table: TimeTable,
+    pub search_route: SearchRouteData,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct SearchRouteTimetableResponse {
-    pub result: String,
-    pub search_route_timetable: SearchRouteTimetable,
-}
-
-// Bus Approach Info structures (for Get_bus_approach_info)
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BusApproachInfo {
-    pub result: String,
-    pub bus_status: i32,
-    pub last_stop: i64,
-    pub last_stop_order: i32,
-    pub delay_time: i32,
-    pub last_delay_time: i32,
-    pub update_time: String,
-    pub barrier_free: i32,
-}
-
-// Bus Stop Timetable structures (for Get_busstop_timetable_list)
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TimetableStation {
-    pub station_id: String,
-    pub station_name: String,
-    pub time: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BusStopLine {
-    pub line_id: i64,
-    pub line_name: String,
-    pub course_id: String,
-    pub course_name: String,
-    pub pos: i32,
-    pub note: String,
-    pub next_time: String,
-    pub before_time: String,
-    pub time: String,
-    pub station_id_name: String,
-    pub station: Vec<TimetableStation>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BusStopTimetableResponse {
-    pub result: String,
-    pub line: BusStopLine,
+pub struct SearchRouteData {
+    pub route: Vec<RouteInfo>,
 }
 
 // Tauri commands
@@ -291,14 +189,65 @@ pub struct BusStopTimetableResponse {
 async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String> {
     let client = reqwest::Client::new();
 
-    // Build request body for bus location API
+    // If station IDs are provided, use Get_search_route API
+    if let (Some(start_id), Some(end_id)) = (&request.start_station_id, &request.end_station_id) {
+        let params = [
+            ("kind", "0"),
+            ("start_st", start_id.as_str()),
+            ("end_st", end_id.as_str()),
+            ("lat1", "-1"),
+            ("lon1", "-1"),
+            ("lat2", "-1"),
+            ("lon2", "-1"),
+            ("bus_prediction_flg", "1"),
+            ("sort_id", "1"),
+            ("lang", ""),
+            ("start_flg", "0"),
+            ("end_flg", "0"),
+        ];
+
+        let response = client
+            .post("https://ekibus-api.city.sapporo.jp/Get_search_route")
+            .form(&params)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch routes: {}", e))?;
+
+        let route_data: SearchRouteResponse = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        // Convert route data to BusInfo
+        let mut buses = Vec::new();
+
+        for route in route_data.search_route.route {
+            for segment in route.route_list {
+                let bus_info = BusInfo {
+                    bus_id: format!("{}", segment.line_id),
+                    route_name: segment.line_name.clone(),
+                    destination: segment.to_name.clone(),
+                    stop_id: segment.from_id.to_string(),
+                    stop_name: segment.from_name.clone(),
+                    arrival_time: None, // Route search doesn't provide arrival times
+                    delay_minutes: None,
+                    congestion_level: None,
+                    updated_at: chrono::Local::now().to_rfc3339(),
+                    latitude: None,
+                    longitude: None,
+                };
+                buses.push(bus_info);
+            }
+        }
+
+        return Ok(buses);
+    }
+
+    // Fallback to original bus location API
     let body = serde_json::json!({
         "kind": "0",
         "lang": ""
     });
-
-    // If we have stop IDs from the request, use them
-    // For now, we'll fetch general bus data and filter later
 
     let response = client
         .post("https://ekibus-api.city.sapporo.jp/Get_busstop_lastdata")
@@ -537,134 +486,6 @@ async fn init_database(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-// New API commands for route search and timetable
-#[tauri::command]
-async fn search_routes(
-    start_st: String,
-    end_st: String,
-) -> Result<SearchRouteResponse, String> {
-    let client = reqwest::Client::new();
-
-    let params = [
-        ("kind", "0"),
-        ("start_st", &start_st),
-        ("end_st", &end_st),
-        ("lat1", "-1"),
-        ("lon1", "-1"),
-        ("lat2", "-1"),
-        ("lon2", "-1"),
-        ("bus_prediction_flg", "1"),
-        ("sort_id", "1"),
-        ("lang", ""),
-        ("start_flg", "0"),
-        ("end_flg", "0"),
-    ];
-
-    let response = client
-        .post("https://ekibus-api.city.sapporo.jp/Get_search_route")
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch routes: {}", e))?;
-
-    let data = response
-        .json::<SearchRouteResponse>()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
-
-    Ok(data)
-}
-
-#[tauri::command]
-async fn get_route_timetable(
-    pattern: String,
-) -> Result<SearchRouteTimetableResponse, String> {
-    let client = reqwest::Client::new();
-
-    let params = [
-        ("kind", "0"),
-        ("pattern", pattern.as_str()),
-        ("lang", ""),
-    ];
-
-    let response = client
-        .post("https://ekibus-api.city.sapporo.jp/Get_search_route_timetable")
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch timetable: {}", e))?;
-
-    let data = response
-        .json::<SearchRouteTimetableResponse>()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
-
-    Ok(data)
-}
-
-#[tauri::command]
-async fn get_bus_approach_info(
-    course_id: i64,
-    station_id: String,
-    time: String,
-) -> Result<BusApproachInfo, String> {
-    let client = reqwest::Client::new();
-
-    let params = [
-        ("kind", "0"),
-        ("course_id", &course_id.to_string()),
-        ("station_id", &station_id),
-        ("time", &time),
-    ];
-
-    let response = client
-        .post("https://ekibus-api.city.sapporo.jp/Get_bus_approach_info")
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch bus info: {}", e))?;
-
-    let data = response
-        .json::<BusApproachInfo>()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
-
-    Ok(data)
-}
-
-#[tauri::command]
-async fn get_busstop_timetable(
-    course_id: i64,
-    station_id: String,
-    time: String,
-    end_st: String,
-) -> Result<BusStopTimetableResponse, String> {
-    let client = reqwest::Client::new();
-
-    let params = [
-        ("kind", "0"),
-        ("course_id", &course_id.to_string()),
-        ("station_id", &station_id),
-        ("time", &time),
-        ("end_st", &end_st),
-        ("lang", ""),
-    ];
-
-    let response = client
-        .post("https://ekibus-api.city.sapporo.jp/Get_busstop_timetable_list")
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch busstop timetable: {}", e))?;
-
-    let data = response
-        .json::<BusStopTimetableResponse>()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
-
-    Ok(data)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -683,11 +504,7 @@ pub fn run() {
             save_bus_stop,
             get_saved_bus_stops,
             delete_bus_stop,
-            init_database,
-            search_routes,
-            get_route_timetable,
-            get_bus_approach_info,
-            get_busstop_timetable
+            init_database
         ])
         .setup(|app| {
             // Initialize database on startup
