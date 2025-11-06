@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import "./App.css";
 
 interface BusInfo {
@@ -27,65 +29,132 @@ interface StationPrediction {
   name: string;
 }
 
-interface Station {
-  station_id: number;
-  name: string;
-  phonic: string;
-}
-
-interface Course {
-  line_id: number;
-  course_id: number;
-  course_name: string;
-  station_id: number;
-  station_name: string;
-  pos: number;
-  st_flag: number;
-  stop_no: string;
-  company_id: number;
-}
-
-interface StationLine {
-  line_id: number;
-  line_name: string;
-  station_id: number;
-  station_name: string;
-  company_id: number;
-  course_list: Course[];
-}
-
-interface StationLineListResponse {
-  result: string;
-  station_linelist: StationLine[];
-  station_list: Station[];
-}
-
 function App() {
-  const [destination, setDestination] = useState("");
-  const [timeFrom, setTimeFrom] = useState("");
-  const [timeTo, setTimeTo] = useState("");
+  // Bus search states
+  const [departureStation, setDepartureStation] = useState("");
+  const [arrivalStation, setArrivalStation] = useState("");
+  const [selectedDateTime, setSelectedDateTime] = useState<Date>(new Date());
+  const [useCurrentTime, setUseCurrentTime] = useState(true);
   const [buses, setBuses] = useState<BusInfo[]>([]);
-  const [busStops, setBusStops] = useState<BusStop[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Saved bus stops
+  const [savedStops, setSavedStops] = useState<BusStop[]>([]);
+
   // Station search states
-  const [stationSearchWord, setStationSearchWord] = useState("");
-  const [stationSuggestions, setStationSuggestions] = useState<StationPrediction[]>([]);
-  const [selectedStation, setSelectedStation] = useState<StationPrediction | null>(null);
-  const [timetableData, setTimetableData] = useState<StationLineListResponse | null>(null);
+  const [showDepartureSuggestions, setShowDepartureSuggestions] = useState(false);
+  const [showArrivalSuggestions, setShowArrivalSuggestions] = useState(false);
+  const [departureSuggestions, setDepartureSuggestions] = useState<StationPrediction[]>([]);
+  const [arrivalSuggestions, setArrivalSuggestions] = useState<StationPrediction[]>([]);
+
+  // Selected stations for display
+  const [selectedDepartureStop, setSelectedDepartureStop] = useState<BusStop | null>(null);
+  const [selectedArrivalStop, setSelectedArrivalStop] = useState<BusStop | null>(null);
 
   useEffect(() => {
-    loadBusStops();
+    loadSavedStops();
   }, []);
 
-  async function loadBusStops() {
+  async function loadSavedStops() {
     try {
-      const stops = await invoke<BusStop[]>("get_bus_stops");
-      setBusStops(stops);
+      const stops = await invoke<BusStop[]>("get_saved_bus_stops");
+      setSavedStops(stops);
     } catch (err) {
-      console.error("Failed to load bus stops:", err);
+      console.error("Failed to load saved stops:", err);
     }
+  }
+
+  async function saveBusStop(stop: BusStop) {
+    try {
+      const stops = await invoke<BusStop[]>("save_bus_stop", { stop });
+      setSavedStops(stops);
+    } catch (err) {
+      console.error("Failed to save bus stop:", err);
+    }
+  }
+
+  async function deleteBusStop(stopId: string) {
+    try {
+      const stops = await invoke<BusStop[]>("delete_bus_stop", { stopId });
+      setSavedStops(stops);
+    } catch (err) {
+      console.error("Failed to delete bus stop:", err);
+    }
+  }
+
+  async function searchStations(searchWord: string, isDeparture: boolean) {
+    if (!searchWord || searchWord.length === 0) {
+      if (isDeparture) {
+        setDepartureSuggestions([]);
+      } else {
+        setArrivalSuggestions([]);
+      }
+      return;
+    }
+
+    try {
+      const suggestions = await invoke<StationPrediction[]>(
+        "search_station_suggestions",
+        { searchWord }
+      );
+      if (isDeparture) {
+        setDepartureSuggestions(suggestions);
+      } else {
+        setArrivalSuggestions(suggestions);
+      }
+    } catch (err) {
+      console.error("駅検索に失敗しました:", err);
+      if (isDeparture) {
+        setDepartureSuggestions([]);
+      } else {
+        setArrivalSuggestions([]);
+      }
+    }
+  }
+
+  function selectStation(station: StationPrediction, isDeparture: boolean) {
+    const busStop: BusStop = {
+      stop_id: station.station_id.toString(),
+      stop_name: station.name,
+      latitude: null,
+      longitude: null,
+    };
+
+    if (isDeparture) {
+      setDepartureStation(station.name);
+      setSelectedDepartureStop(busStop);
+      setShowDepartureSuggestions(false);
+      setDepartureSuggestions([]);
+    } else {
+      setArrivalStation(station.name);
+      setSelectedArrivalStop(busStop);
+      setShowArrivalSuggestions(false);
+      setArrivalSuggestions([]);
+    }
+  }
+
+  function selectSavedStop(stop: BusStop, isDeparture: boolean) {
+    if (isDeparture) {
+      setDepartureStation(stop.stop_name);
+      setSelectedDepartureStop(stop);
+      setShowDepartureSuggestions(false);
+    } else {
+      setArrivalStation(stop.stop_name);
+      setSelectedArrivalStop(stop);
+      setShowArrivalSuggestions(false);
+    }
+  }
+
+  function swapStations() {
+    const tempStation = departureStation;
+    const tempStop = selectedDepartureStop;
+
+    setDepartureStation(arrivalStation);
+    setSelectedDepartureStop(selectedArrivalStop);
+
+    setArrivalStation(tempStation);
+    setSelectedArrivalStop(tempStop);
   }
 
   async function searchBuses(e: React.FormEvent) {
@@ -93,77 +162,34 @@ function App() {
     setLoading(true);
     setError("");
 
-    try {
-      const result = await invoke<BusInfo[]>("search_buses", {
-        request: {
-          destination: destination || null,
-          time_from: timeFrom || null,
-          time_to: timeTo || null,
-        },
-      });
-      setBuses(result);
-    } catch (err) {
-      setError(`検索に失敗しました: ${err}`);
-    } finally {
+    if (!selectedDepartureStop || !selectedArrivalStop) {
+      setError("乗車駅と降車駅の両方を選択してください");
       setLoading(false);
-    }
-  }
-
-  async function fetchLiveData() {
-    setLoading(true);
-    setError("");
-
-    try {
-      const stopIds = busStops.map((stop) => stop.stop_id);
-      const data = await invoke<string>("fetch_bus_location_data", {
-        stopIdList: stopIds,
-      });
-      console.log("Bus location data:", data);
-      // TODO: Parse and display the data
-    } catch (err) {
-      setError(`データ取得に失敗しました: ${err}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function searchStations(searchWord: string) {
-    if (!searchWord || searchWord.length === 0) {
-      setStationSuggestions([]);
       return;
     }
 
     try {
-      const suggestions = await invoke<StationPrediction[]>(
-        "search_station_suggestions",
-        {
-          searchWord: searchWord,
-        }
-      );
-      setStationSuggestions(suggestions);
-    } catch (err) {
-      console.error("駅検索に失敗しました:", err);
-      setStationSuggestions([]);
-    }
-  }
+      // Save both stops
+      await saveBusStop(selectedDepartureStop);
+      await saveBusStop(selectedArrivalStop);
 
-  async function selectStation(station: StationPrediction) {
-    setSelectedStation(station);
-    setStationSearchWord(station.name);
-    setStationSuggestions([]);
-    setLoading(true);
-    setError("");
+      const searchTime = useCurrentTime ? new Date() : selectedDateTime;
+      const timeString = searchTime.toTimeString().slice(0, 5);
 
-    try {
-      const data = await invoke<StationLineListResponse>(
-        "get_station_timetable",
-        {
-          stationId: station.station_id,
-        }
-      );
-      setTimetableData(data);
+      // Mock bus search - in real implementation, this would call the API
+      const result = await invoke<BusInfo[]>("search_buses", {
+        request: {
+          destination: arrivalStation,
+          time_from: timeString,
+          time_to: null,
+        },
+      });
+      setBuses(result);
+
+      // Reload saved stops
+      await loadSavedStops();
     } catch (err) {
-      setError(`時刻表の取得に失敗しました: ${err}`);
+      setError(`検索に失敗しました: ${err}`);
     } finally {
       setLoading(false);
     }
@@ -194,124 +220,148 @@ function App() {
     <main className="container">
       <h1>札幌交通情報</h1>
 
-      {/* Station Search Section */}
-      <div className="search-section station-search">
-        <h2>駅・路線検索</h2>
-        <div className="form-group">
-          <label htmlFor="station-search">駅名を入力:</label>
-          <div className="autocomplete-wrapper">
-            <input
-              id="station-search"
-              type="text"
-              value={stationSearchWord}
-              onChange={(e) => {
-                setStationSearchWord(e.target.value);
-                searchStations(e.target.value);
-              }}
-              placeholder="例: 大通、札幌駅"
-            />
-            {stationSuggestions.length > 0 && (
-              <div className="suggestions-dropdown">
-                {stationSuggestions.map((station) => (
-                  <div
-                    key={`${station.station_id}-${station.company_id}`}
-                    className="suggestion-item"
-                    onClick={() => selectStation(station)}
-                  >
-                    {station.name}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {selectedStation && (
-          <div className="selected-station">
-            <strong>選択中の駅:</strong> {selectedStation.name}
-          </div>
-        )}
-
-        {error && <div className="error">{error}</div>}
-      </div>
-
-      {/* Timetable Display Section */}
-      {timetableData && (
-        <div className="timetable-section">
-          <h2>路線情報</h2>
-          {timetableData.station_linelist.map((line) => (
-            <div key={line.line_id} className="line-card">
-              <div className="line-header">
-                <h3>{line.line_name}</h3>
-                <span className="station-name">{line.station_name}</span>
-              </div>
-              <div className="courses">
-                <h4>方面:</h4>
-                {line.course_list.map((course) => (
-                  <div key={course.course_id} className="course-item">
-                    <span className="course-name">{course.course_name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-
-          {timetableData.station_list.length > 0 && (
-            <div className="nearby-stations">
-              <h3>この路線の駅一覧</h3>
-              <div className="stations-grid">
-                {timetableData.station_list.map((station) => (
-                  <div key={station.station_id} className="station-item">
-                    <span className="station-name-jp">{station.name}</span>
-                    <span className="station-phonic">{station.phonic}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="search-section">
+      {/* Bus Search Section */}
+      <div className="search-section bus-search">
         <h2>バス検索</h2>
         <form onSubmit={searchBuses}>
+          {/* Departure Station */}
           <div className="form-group">
-            <label htmlFor="destination">目的地:</label>
-            <input
-              id="destination"
-              type="text"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              placeholder="例: 札幌駅"
-            />
+            <label htmlFor="departure">乗車駅:</label>
+            <div className="autocomplete-wrapper">
+              <input
+                id="departure"
+                type="text"
+                value={departureStation}
+                onChange={(e) => {
+                  setDepartureStation(e.target.value);
+                  searchStations(e.target.value, true);
+                }}
+                onFocus={() => setShowDepartureSuggestions(true)}
+                placeholder="例: 大通、札幌駅"
+              />
+              {showDepartureSuggestions && (
+                <div className="suggestions-dropdown">
+                  <div className="suggestions-section">
+                    <div className="suggestions-header">検索結果</div>
+                    {departureSuggestions.map((station) => (
+                      <div
+                        key={`${station.station_id}-${station.company_id}`}
+                        className="suggestion-item"
+                        onClick={() => selectStation(station, true)}
+                      >
+                        {station.name}
+                      </div>
+                    ))}
+                  </div>
+                  {savedStops.length > 0 && (
+                    <div className="suggestions-section">
+                      <div className="suggestions-header">登録済みバス停</div>
+                      {savedStops.map((stop) => (
+                        <div
+                          key={stop.stop_id}
+                          className="suggestion-item saved"
+                          onClick={() => selectSavedStop(stop, true)}
+                        >
+                          {stop.stop_name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="form-group">
-            <label htmlFor="time-from">開始時刻:</label>
-            <input
-              id="time-from"
-              type="time"
-              value={timeFrom}
-              onChange={(e) => setTimeFrom(e.target.value)}
-            />
+          {/* Swap Button */}
+          <div className="swap-button-container">
+            <button
+              type="button"
+              className="swap-button"
+              onClick={swapStations}
+              title="乗車駅と降車駅を入れ替え"
+            >
+              ⇅
+            </button>
           </div>
 
+          {/* Arrival Station */}
           <div className="form-group">
-            <label htmlFor="time-to">終了時刻:</label>
-            <input
-              id="time-to"
-              type="time"
-              value={timeTo}
-              onChange={(e) => setTimeTo(e.target.value)}
-            />
+            <label htmlFor="arrival">降車駅:</label>
+            <div className="autocomplete-wrapper">
+              <input
+                id="arrival"
+                type="text"
+                value={arrivalStation}
+                onChange={(e) => {
+                  setArrivalStation(e.target.value);
+                  searchStations(e.target.value, false);
+                }}
+                onFocus={() => setShowArrivalSuggestions(true)}
+                placeholder="例: すすきの、真駒内"
+              />
+              {showArrivalSuggestions && (
+                <div className="suggestions-dropdown">
+                  <div className="suggestions-section">
+                    <div className="suggestions-header">検索結果</div>
+                    {arrivalSuggestions.map((station) => (
+                      <div
+                        key={`${station.station_id}-${station.company_id}`}
+                        className="suggestion-item"
+                        onClick={() => selectStation(station, false)}
+                      >
+                        {station.name}
+                      </div>
+                    ))}
+                  </div>
+                  {savedStops.length > 0 && (
+                    <div className="suggestions-section">
+                      <div className="suggestions-header">登録済みバス停</div>
+                      {savedStops.map((stop) => (
+                        <div
+                          key={stop.stop_id}
+                          className="suggestion-item saved"
+                          onClick={() => selectSavedStop(stop, false)}
+                        >
+                          {stop.stop_name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Time Selection */}
+          <div className="form-group">
+            <label>
+              <input
+                type="checkbox"
+                checked={useCurrentTime}
+                onChange={(e) => setUseCurrentTime(e.target.checked)}
+              />
+              現在時刻で検索
+            </label>
+          </div>
+
+          {!useCurrentTime && (
+            <div className="form-group">
+              <label htmlFor="datetime">出発日時:</label>
+              <DatePicker
+                selected={selectedDateTime}
+                onChange={(date) => date && setSelectedDateTime(date)}
+                showTimeSelect
+                timeFormat="HH:mm"
+                timeIntervals={15}
+                dateFormat="yyyy/MM/dd HH:mm"
+                className="datetime-picker"
+              />
+            </div>
+          )}
 
           <div className="button-group">
             <button type="submit" disabled={loading}>
-              {loading ? "検索中..." : "検索"}
-            </button>
-            <button type="button" onClick={fetchLiveData} disabled={loading}>
-              リアルタイムデータ取得
+              {loading ? "検索中..." : "バス検索"}
             </button>
           </div>
         </form>
@@ -319,11 +369,10 @@ function App() {
         {error && <div className="error">{error}</div>}
       </div>
 
-      <div className="results-section">
-        <h2>バス一覧</h2>
-        {buses.length === 0 ? (
-          <p className="no-results">検索結果がありません</p>
-        ) : (
+      {/* Bus Results */}
+      {buses.length > 0 && (
+        <div className="results-section">
+          <h2>バス一覧</h2>
           <div className="bus-list">
             {buses.map((bus) => (
               <div key={bus.bus_id} className="bus-card">
@@ -366,19 +415,30 @@ function App() {
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
+      {/* Saved Bus Stops */}
       <div className="bus-stops-section">
         <h2>登録済みバス停</h2>
-        <div className="bus-stops-list">
-          {busStops.map((stop) => (
-            <div key={stop.stop_id} className="bus-stop-item">
-              <span className="stop-name">{stop.stop_name}</span>
-              <span className="stop-id">ID: {stop.stop_id}</span>
-            </div>
-          ))}
-        </div>
+        {savedStops.length === 0 ? (
+          <p className="no-results">登録済みバス停はありません。検索して駅を選択すると自動的に登録されます。</p>
+        ) : (
+          <div className="bus-stops-list">
+            {savedStops.map((stop) => (
+              <div key={stop.stop_id} className="bus-stop-item">
+                <span className="stop-name">{stop.stop_name}</span>
+                <button
+                  className="delete-button"
+                  onClick={() => deleteBusStop(stop.stop_id)}
+                  title="削除"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );

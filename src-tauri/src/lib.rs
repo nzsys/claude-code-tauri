@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
+use std::sync::Mutex;
+
+// Global state for saved bus stops
+struct AppState {
+    saved_stops: Mutex<Vec<BusStop>>,
+}
 
 // Data structures for Bus API
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -202,6 +208,49 @@ async fn get_station_timetable(station_id: i32) -> Result<StationLineListRespons
 }
 
 #[tauri::command]
+async fn save_bus_stop(
+    state: tauri::State<'_, AppState>,
+    stop: BusStop,
+) -> Result<Vec<BusStop>, String> {
+    let mut stops = state
+        .saved_stops
+        .lock()
+        .map_err(|e| format!("Failed to lock state: {}", e))?;
+
+    // Check if stop already exists
+    if !stops.iter().any(|s| s.stop_id == stop.stop_id) {
+        stops.push(stop);
+    }
+
+    Ok(stops.clone())
+}
+
+#[tauri::command]
+async fn get_saved_bus_stops(state: tauri::State<'_, AppState>) -> Result<Vec<BusStop>, String> {
+    let stops = state
+        .saved_stops
+        .lock()
+        .map_err(|e| format!("Failed to lock state: {}", e))?;
+
+    Ok(stops.clone())
+}
+
+#[tauri::command]
+async fn delete_bus_stop(
+    state: tauri::State<'_, AppState>,
+    stop_id: String,
+) -> Result<Vec<BusStop>, String> {
+    let mut stops = state
+        .saved_stops
+        .lock()
+        .map_err(|e| format!("Failed to lock state: {}", e))?;
+
+    stops.retain(|s| s.stop_id != stop_id);
+
+    Ok(stops.clone())
+}
+
+#[tauri::command]
 async fn init_database(app_handle: tauri::AppHandle) -> Result<(), String> {
     let app_data_dir = app_handle
         .path()
@@ -217,6 +266,9 @@ async fn init_database(app_handle: tauri::AppHandle) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(AppState {
+            saved_stops: Mutex::new(Vec::new()),
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_http::init())
@@ -226,6 +278,9 @@ pub fn run() {
             fetch_bus_location_data,
             search_station_suggestions,
             get_station_timetable,
+            save_bus_stop,
+            get_saved_bus_stops,
+            delete_bus_stop,
             init_database
         ])
         .setup(|app| {
