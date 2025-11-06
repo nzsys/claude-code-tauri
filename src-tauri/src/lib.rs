@@ -552,6 +552,7 @@ async fn search_buses(
                                 let mut bus_copy = bus_info.clone();
                                 bus_copy.arrival_time = Some(time_entry.from_time.clone());
                                 bus_copy.updated_at = chrono::Local::now().to_rfc3339();
+                                bus_copy.course_id = time_entry.course_id.to_string();
                                 buses.push(bus_copy);
                             }
                         } else {
@@ -926,10 +927,15 @@ async fn get_bus_stops_data(
     station_id: String,
     end_st: String,
 ) -> Result<Vec<StationData>, String> {
+    eprintln!("get_bus_stops_data called with: course_id={}, station_id={}, end_st={}", course_id, station_id, end_st);
+
     // Try cache first
     if let Ok(cached_stops) = get_cached_bus_stops(&app_handle, &course_id, &station_id, &end_st) {
+        eprintln!("Found cached stops: {} items", cached_stops.len());
         return Ok(cached_stops);
     }
+
+    eprintln!("No cache found, fetching from API...");
 
     // Fetch from API
     let client = reqwest::Client::new();
@@ -946,12 +952,21 @@ async fn get_bus_stops_data(
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch bus stops: {}", e))?;
+        .map_err(|e| {
+            eprintln!("API request failed: {}", e);
+            format!("Failed to fetch bus stops: {}", e)
+        })?;
 
-    let data: BusStopLastDataResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse bus stops response: {}", e))?;
+    let response_text = response.text().await.map_err(|e| format!("Failed to read response: {}", e))?;
+    eprintln!("API response: {}", response_text);
+
+    let data: BusStopLastDataResponse = serde_json::from_str(&response_text)
+        .map_err(|e| {
+            eprintln!("JSON parse failed: {}", e);
+            format!("Failed to parse bus stops response: {}", e)
+        })?;
+
+    eprintln!("Parsed {} stops from API", data.station_data_list.len());
 
     // Save to cache
     let _ = save_bus_stops_to_cache(&app_handle, &course_id, &station_id, &end_st, &data);

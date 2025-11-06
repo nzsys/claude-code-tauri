@@ -403,7 +403,7 @@ button:disabled {
 
 .bus-stop-item {
   background: #ecf0f1;
-  color: #2c3e50;
+  color: black;
   padding: 15px;
   border-radius: 8px;
   display: flex;
@@ -708,7 +708,7 @@ button:disabled {
 
   .bus-stop-item {
     background: #34495e;
-    color: #ecf0f1;
+    color: white;
   }
 
   .detail-item {
