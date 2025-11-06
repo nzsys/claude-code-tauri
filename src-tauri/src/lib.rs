@@ -936,15 +936,12 @@ async fn get_bus_stops_data(
     station_id: String,
     end_st: String,
 ) -> Result<Vec<StationData>, String> {
-    eprintln!("get_bus_stops_data called with: course_id={}, station_id={}, end_st={}", course_id, station_id, end_st);
 
     // Try cache first
     if let Ok(cached_stops) = get_cached_bus_stops(&app_handle, &course_id, &station_id, &end_st) {
-        eprintln!("Found cached stops: {} items", cached_stops.len());
         return Ok(cached_stops);
     }
 
-    eprintln!("No cache found, fetching from API...");
 
     // Fetch from API
     let client = reqwest::Client::new();
@@ -962,20 +959,16 @@ async fn get_bus_stops_data(
         .send()
         .await
         .map_err(|e| {
-            eprintln!("API request failed: {}", e);
             format!("Failed to fetch bus stops: {}", e)
         })?;
 
     let response_text = response.text().await.map_err(|e| format!("Failed to read response: {}", e))?;
-    eprintln!("API response: {}", response_text);
 
     let data: BusStopLastDataResponse = serde_json::from_str(&response_text)
         .map_err(|e| {
-            eprintln!("JSON parse failed: {}", e);
             format!("Failed to parse bus stops response: {}", e)
         })?;
 
-    eprintln!("Parsed {} stops from API", data.station_data_list.len());
 
     // Save to cache
     let _ = save_bus_stops_to_cache(&app_handle, &course_id, &station_id, &end_st, &data);
@@ -990,7 +983,6 @@ async fn get_bus_approach_info(
     station_id: String,
     time: String,
 ) -> Result<BusApproachInfo, String> {
-    eprintln!("get_bus_approach_info called: course_id={}, station_id={}, time={}", course_id, station_id, time);
 
     let client = reqwest::Client::new();
     let params = [
@@ -1006,21 +998,17 @@ async fn get_bus_approach_info(
         .send()
         .await
         .map_err(|e| {
-            eprintln!("API request failed: {}", e);
             format!("Failed to fetch approach info: {}", e)
         })?;
 
     let response_text = response.text().await
         .map_err(|e| format!("Failed to read response: {}", e))?;
-    eprintln!("API response: {}", response_text);
 
     let data: BusApproachInfo = serde_json::from_str(&response_text)
         .map_err(|e| {
-            eprintln!("JSON parse failed: {}", e);
             format!("Failed to parse approach info: {}", e)
         })?;
 
-    eprintln!("Parsed approach info: delay={}, last_stop={}", data.delay_time, data.last_stop);
     Ok(data)
 }
 
@@ -1032,7 +1020,6 @@ async fn get_bus_timetable_list(
     time: String,
     end_st: String,
 ) -> Result<BusStopTimetableResponse, String> {
-    eprintln!("get_bus_timetable_list called: course_id={}, station_id={}, time={}, end_st={}",
               course_id, station_id, time, end_st);
 
     let client = reqwest::Client::new();
@@ -1051,21 +1038,17 @@ async fn get_bus_timetable_list(
         .send()
         .await
         .map_err(|e| {
-            eprintln!("API request failed: {}", e);
             format!("Failed to fetch timetable list: {}", e)
         })?;
 
     let response_text = response.text().await
         .map_err(|e| format!("Failed to read response: {}", e))?;
-    eprintln!("API response: {}", response_text);
 
     let data: BusStopTimetableResponse = serde_json::from_str(&response_text)
         .map_err(|e| {
-            eprintln!("JSON parse failed: {}", e);
             format!("Failed to parse timetable list: {}", e)
         })?;
 
-    eprintln!("Parsed timetable list: {} stops", data.line.station.len());
     Ok(data)
 }
 

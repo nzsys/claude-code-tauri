@@ -699,6 +699,18 @@ button:disabled {
     background: #2c3e50;
   }
 
+  .bus-card h3,
+  .bus-card .destination,
+  .bus-card .detail-item span,
+  .bus-card .status-text,
+  .bus-card p {
+    color: white;
+  }
+
+  .bus-card .detail-item .label {
+    color: #bdc3c7;
+  }
+
   input[type="text"],
   input[type="time"] {
     background: #34495e;

@@ -322,6 +322,64 @@ function App() {
     }
   }
 
+  async function refreshSingleBus(bus: BusInfo, index: number) {
+    if (!bus.course_id || !bus.arrival_time) {
+      return;
+    }
+
+    try {
+      // Fetch updated approach info and stop list in parallel
+      const [approachResult, stopsResult] = await Promise.allSettled([
+        invoke<BusApproachInfo>("get_bus_approach_info", {
+          courseId: bus.course_id,
+          stationId: bus.stop_id,
+          time: bus.arrival_time,
+        }),
+        invoke<StationData[]>("get_bus_stops_data", {
+          courseId: bus.course_id,
+          stationId: bus.stop_id,
+          endSt: bus.end_station_id || "",
+        }),
+      ]);
+
+      let updatedBus = { ...bus };
+
+      // Process approach info
+      if (approachResult.status === "fulfilled") {
+        const approachInfo = approachResult.value;
+        updatedBus.delay_minutes = approachInfo.delay_time;
+
+        // Calculate stops away and find last stop name
+        if (stopsResult.status === "fulfilled") {
+          const stops = stopsResult.value;
+          const lastStopData = stops.find(s => s.station_id === String(approachInfo.last_stop));
+          if (lastStopData) {
+            updatedBus.last_stop_name = lastStopData.name;
+          }
+
+          // Calculate stops away
+          const currentStopIndex = stops.findIndex(s => s.station_id === String(approachInfo.last_stop));
+          const boardingStopIndex = stops.findIndex(s => s.station_id === bus.stop_id);
+
+          if (currentStopIndex !== -1 && boardingStopIndex !== -1 && boardingStopIndex > currentStopIndex) {
+            updatedBus.stops_away = boardingStopIndex - currentStopIndex;
+          } else {
+            updatedBus.stops_away = null;
+          }
+        }
+      }
+
+      // Update the buses array with the refreshed bus
+      setBuses(prevBuses => {
+        const newBuses = [...prevBuses];
+        newBuses[index] = updatedBus;
+        return newBuses;
+      });
+    } catch (error) {
+      console.error(`Failed to refresh bus ${bus.bus_id}:`, error);
+    }
+  }
+
   async function openBusDetail(bus: BusInfo) {
     setSelectedBus(bus);
     setShowBusDetail(true);
@@ -594,8 +652,7 @@ function App() {
                         className="refresh-bus-btn"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // TODO: バス情報を更新する関数を実装
-                          alert("バス情報の更新機能は実装予定です");
+                          refreshSingleBus(bus, index);
                         }}
                         title="最新情報に更新"
                       >
