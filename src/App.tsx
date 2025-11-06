@@ -208,7 +208,19 @@ function App() {
           time_to: null,
         },
       });
-      setBuses(result);
+
+      // Sort buses by arrival time (earliest first)
+      const sortedBuses = result.sort((a, b) => {
+        // Buses without arrival time go to the end
+        if (!a.arrival_time && !b.arrival_time) return 0;
+        if (!a.arrival_time) return 1;
+        if (!b.arrival_time) return -1;
+
+        // Compare arrival times
+        return a.arrival_time.localeCompare(b.arrival_time);
+      });
+
+      setBuses(sortedBuses);
 
       // Reload saved stops
       await loadSavedStops();
@@ -255,6 +267,12 @@ function App() {
     setShowBusDetail(true);
     setBusStops([]);
 
+    console.log("Bus details:", {
+      course_id: bus.course_id,
+      stop_id: bus.stop_id,
+      end_station_id: bus.end_station_id,
+    });
+
     // Only fetch stops if we have the required parameters
     if (bus.course_id && bus.end_station_id) {
       setLoadingStops(true);
@@ -264,12 +282,15 @@ function App() {
           stationId: bus.stop_id,
           endSt: bus.end_station_id,
         });
+        console.log("Received stops:", stops);
         setBusStops(stops);
       } catch (err) {
         console.error("Failed to load bus stops:", err);
       } finally {
         setLoadingStops(false);
       }
+    } else {
+      console.warn("Missing required parameters for fetching stops");
     }
   }
 

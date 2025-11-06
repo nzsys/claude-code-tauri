@@ -323,12 +323,6 @@ button:disabled {
   border-radius: 12px;
   padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: transform 0.3s, box-shadow 0.3s;
-}
-
-.bus-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
 }
 
 .bus-header {
@@ -409,6 +403,7 @@ button:disabled {
 
 .bus-stop-item {
   background: #ecf0f1;
+  color: #2c3e50;
   padding: 15px;
   border-radius: 8px;
   display: flex;
@@ -713,6 +708,7 @@ button:disabled {
 
   .bus-stop-item {
     background: #34495e;
+    color: #ecf0f1;
   }
 
   .detail-item {
@@ -785,6 +781,51 @@ button:disabled {
   .map-overlay {
     background: rgba(44, 62, 80, 0.95);
     color: #ecf0f1;
+  }
+
+  .modal-content {
+    background: #2c3e50;
+    color: #ecf0f1;
+  }
+
+  .modal-header {
+    border-bottom-color: #445566;
+  }
+
+  .modal-header h2 {
+    color: #ecf0f1;
+  }
+
+  .modal-close {
+    color: #95a5a6;
+  }
+
+  .modal-close:hover {
+    color: #ecf0f1;
+  }
+
+  .bus-detail-info p {
+    color: #ecf0f1;
+  }
+
+  .bus-stops-timeline h3 {
+    color: #ecf0f1;
+  }
+
+  .stop-item {
+    color: #ecf0f1;
+  }
+
+  .stop-item:hover {
+    background-color: #34495e;
+  }
+
+  .stop-item.current-stop {
+    background: linear-gradient(135deg, #667eea33 0%, #764ba233 100%);
+  }
+
+  .info-text {
+    color: #95a5a6;
   }
 }
 
@@ -930,12 +971,6 @@ button:disabled {
 /* Clickable Bus Card */
 .bus-card.clickable {
   cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.bus-card.clickable:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
 }
 
 /* Modal Styles */
@@ -1067,6 +1102,10 @@ button:disabled {
 
 .bus-title {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .refresh-bus-btn {
