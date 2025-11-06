@@ -44,7 +44,7 @@ interface BusApproachInfo {
   last_stop_order: number;
   delay_time: number;
   last_delay_time: number;
-  update_time: string;
+  update_time: string | null;
   barrier_free: number;
 }
 
@@ -710,7 +710,7 @@ function App() {
                       busApproachInfo.bus_status === 3 ? "混雑" :
                       busApproachInfo.bus_status === 4 ? "満員" : "不明"
                     }</p>
-                    <p><strong>最終更新:</strong> {busApproachInfo.update_time}</p>
+                    <p><strong>最終更新:</strong> {busApproachInfo.update_time || "未更新"}</p>
                   </>
                 )}
               </div>

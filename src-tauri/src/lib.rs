@@ -263,7 +263,7 @@ pub struct BusApproachInfo {
     pub last_stop_order: i32,
     pub delay_time: i32,
     pub last_delay_time: i32,
-    pub update_time: String,
+    pub update_time: Option<String>,
     pub barrier_free: i32,
 }
 
