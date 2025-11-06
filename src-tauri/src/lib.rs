@@ -378,21 +378,17 @@ async fn search_buses(
                         .await {
 
                         let response_text = busstop_response.text().await.unwrap_or_default();
-                        println!("Get_busstop_list raw response: {}", &response_text[..response_text.len().min(500)]);
 
                         match serde_json::from_str::<BusStopListResponse>(&response_text) {
                             Ok(busstop_data) => {
-                                println!("Get_busstop_list returned {} stop data entries", busstop_data.data.len());
 
                                 // Find the first bus arriving after current time
                                 for stop_data in &busstop_data.data {
-                                    println!("Checking stop_data: line_id={}, station_id={}, time_list.len()={}",
                                         stop_data.line_id, stop_data.station_id, stop_data.time_list.len());
 
                                     if let Some(next_bus) = stop_data.time_list.iter()
                                         .find(|bus| bus.time >= current_time_str) {
 
-                                        println!("Found next bus: time={}, delay={}, status={}",
                                             next_bus.time, next_bus.delay_time, next_bus.bus_status);
 
                                         // Set arrival time
@@ -438,21 +434,17 @@ async fn search_buses(
 
                                         break;
                                     } else {
-                                        println!("No bus found after current time {} in this stop_data", current_time_str);
                                     }
                                 }
                             }
                             Err(e) => {
-                                println!("Failed to parse Get_busstop_list response: {}", e);
                             }
                         }
                     } else {
-                        println!("Failed to call Get_busstop_list API");
                     }
 
                     // Fallback to timetable if no real-time data available
                     if bus_info.arrival_time.is_none() {
-                        println!("No real-time data available, falling back to timetable");
 
                         // Determine dia_flg based on Sapporo API conventions
                         // Note: Sapporo API uses 1,2,3,4 (not 0,1,2)
@@ -462,7 +454,6 @@ async fn search_buses(
                             chrono::Weekday::Sun => 3,  // Assuming 3 = Sunday
                             _ => 1,                      // Assuming 1 = Weekday
                         };
-                        println!("Trying dia_flg={} for weekday {:?}", preferred_dia_flg, current_time.weekday());
 
                         // Try to get from cache first
                         let mut timetable_entries = get_cached_timetable(
@@ -472,12 +463,10 @@ async fn search_buses(
                             preferred_dia_flg,
                         ).ok();
 
-                        println!("Cache lookup result: {} entries",
                             timetable_entries.as_ref().map(|e| e.len()).unwrap_or(0));
 
                         // If not in cache, fetch from API and save to cache
                         if timetable_entries.is_none() || timetable_entries.as_ref().unwrap().is_empty() {
-                            println!("Fetching timetable from API...");
                             let timetable_params = [
                                 ("kind", "0"),
                                 ("start_station_id", request.start_station_id.as_ref().unwrap().as_str()),
@@ -494,27 +483,22 @@ async fn search_buses(
                                 .await {
 
                                 if let Ok(timetable_data) = timetable_response.json::<SearchRouteTimetableResponse>().await {
-                                    println!("Timetable API returned {} route items",
                                         timetable_data.search_route_timetable.time_table.route_list.len());
 
                                     // Find the matching route segment in the timetable
                                     for route_item in timetable_data.search_route_timetable.time_table.route_list {
-                                        println!("Checking route_item: line_id={}, dia_list.len()={}",
                                             route_item.line_id, route_item.dia_list.len());
 
                                         if route_item.line_id == segment.line_id.to_string() {
-                                            println!("Matched line_id! Looking for dia_flg={}", preferred_dia_flg);
 
                                             // Look through dia_list for time entries
                                             // Try preferred dia_flg first, then fallback to first available
                                             let mut found_dia = None;
                                             for dia in &route_item.dia_list {
-                                                println!("Checking dia: dia_flg={}, time_table.len()={}",
                                                     dia.dia_flg, dia.time_table.len());
 
                                                 if dia.dia_flg == preferred_dia_flg {
                                                     found_dia = Some(dia);
-                                                    println!("Matched preferred dia_flg! Using {} entries",
                                                         dia.time_table.len());
                                                     break;
                                                 }
@@ -523,12 +507,10 @@ async fn search_buses(
                                             // If preferred dia_flg not found, use first available
                                             if found_dia.is_none() && !route_item.dia_list.is_empty() {
                                                 found_dia = Some(&route_item.dia_list[0]);
-                                                println!("Preferred dia_flg not found, using first available dia_flg={}",
                                                     route_item.dia_list[0].dia_flg);
                                             }
 
                                             if let Some(dia) = found_dia {
-                                                println!("Saving {} entries to cache",
                                                     dia.time_table.len());
 
                                                 // Save to cache
@@ -548,10 +530,8 @@ async fn search_buses(
                                         }
                                     }
                                 } else {
-                                    println!("Failed to parse timetable API response");
                                 }
                             } else {
-                                println!("Failed to call timetable API");
                             }
                         }
 
@@ -561,24 +541,20 @@ async fn search_buses(
                             let one_hour_later = current_time + chrono::Duration::hours(1);
                             let one_hour_later_str = one_hour_later.format("%H:%M").to_string();
 
-                            println!("Using {} timetable entries, looking for times between {} and {}",
                                 entries.len(), current_time_str, one_hour_later_str);
 
                             let matching_entries: Vec<_> = entries.iter()
                                 .filter(|entry| entry.from_time >= current_time_str && entry.from_time <= one_hour_later_str)
                                 .collect();
 
-                            println!("Found {} buses within 1 hour", matching_entries.len());
 
                             for time_entry in matching_entries {
                                 let mut bus_copy = bus_info.clone();
                                 bus_copy.arrival_time = Some(time_entry.from_time.clone());
                                 bus_copy.updated_at = chrono::Local::now().to_rfc3339();
-                                println!("Adding bus with arrival time: {}", time_entry.from_time);
                                 buses.push(bus_copy);
                             }
                         } else {
-                            println!("No timetable entries available");
                             buses.push(bus_info);
                         }
                     } else {

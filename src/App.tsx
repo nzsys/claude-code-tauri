@@ -377,21 +377,18 @@ function App() {
           {/* Time Selection */}
           <div className="form-group">
             <label htmlFor="time-mode">出発時刻:</label>
-            <div className="time-mode-switch">
-              <button
-                type="button"
-                className={`time-mode-button ${useCurrentTime ? 'active' : ''}`}
-                onClick={() => setUseCurrentTime(true)}
-              >
-                現在時刻
-              </button>
-              <button
-                type="button"
-                className={`time-mode-button ${!useCurrentTime ? 'active' : ''}`}
-                onClick={() => setUseCurrentTime(false)}
-              >
-                指定日時
-              </button>
+            <div className="toggle-switch-container">
+              <span className={`toggle-label ${useCurrentTime ? 'active' : ''}`}>現在時刻</span>
+              <div className="toggle-switch" onClick={() => setUseCurrentTime(!useCurrentTime)}>
+                <input
+                  type="checkbox"
+                  checked={!useCurrentTime}
+                  onChange={() => setUseCurrentTime(!useCurrentTime)}
+                  className="toggle-input"
+                />
+                <span className="toggle-slider"></span>
+              </div>
+              <span className={`toggle-label ${!useCurrentTime ? 'active' : ''}`}>指定日時</span>
             </div>
           </div>
 
@@ -436,9 +433,41 @@ function App() {
                     onClick={() => openBusDetail(bus)}
                   >
                     <div className="bus-header">
-                      <h3>{bus.route_name}</h3>
-                      <span className="destination">{bus.destination}行き</span>
+                      <div className="bus-title">
+                        <h3>{bus.route_name}</h3>
+                        <span className="destination">{bus.destination}行き</span>
+                      </div>
+                      <button
+                        className="refresh-bus-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // TODO: バス情報を更新する関数を実装
+                          alert("バス情報の更新機能は実装予定です");
+                        }}
+                        title="最新情報に更新"
+                      >
+                        🔄
+                      </button>
                     </div>
+
+                    {/* Current Status Highlight */}
+                    {(bus.last_stop_name || bus.stops_away !== null) && (
+                      <div className="bus-current-status">
+                        {bus.last_stop_name && (
+                          <div className="status-item">
+                            <span className="status-icon">📍</span>
+                            <span className="status-text">現在地: {bus.last_stop_name}</span>
+                          </div>
+                        )}
+                        {bus.stops_away !== null && (
+                          <div className="status-item">
+                            <span className="status-icon">🚌</span>
+                            <span className="status-text">あと{bus.stops_away}駅</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="bus-details">
                       <div className="detail-item">
                         <span className="label">バス停:</span>
@@ -467,24 +496,10 @@ function App() {
                           {bus.congestion_level || "不明"}
                         </span>
                       </div>
-                      {bus.stops_away !== null && bus.estimated_minutes !== null && (
+                      {bus.estimated_minutes !== null && (
                         <div className="detail-item">
-                          <span className="label">バス位置:</span>
-                          <span className="position-badge">
-                            🚌 あと{bus.stops_away}駅（約{bus.estimated_minutes}分後）
-                          </span>
-                        </div>
-                      )}
-                      {bus.last_stop_name && (
-                        <div className="detail-item">
-                          <span className="label">現在地:</span>
-                          <span className="last-stop-info">{bus.last_stop_name}</span>
-                        </div>
-                      )}
-                      {bus.latitude && bus.longitude && (
-                        <div className="detail-item">
-                          <span className="label">位置:</span>
-                          <span className="location-badge">📍 地図に表示中</span>
+                          <span className="label">到着まで:</span>
+                          <span className="estimated-time">約{bus.estimated_minutes}分</span>
                         </div>
                       )}
                     </div>

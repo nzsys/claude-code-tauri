@@ -103,41 +103,76 @@ input[type="time"]:focus {
   border-color: #3498db;
 }
 
-.time-mode-switch {
+/* Beautiful Toggle Switch */
+.toggle-switch-container {
   display: flex;
-  gap: 0;
-  border: 2px solid #3498db;
-  border-radius: 8px;
-  overflow: hidden;
+  align-items: center;
+  gap: 12px;
   margin-top: 8px;
 }
 
-.time-mode-button {
-  flex: 1;
-  padding: 10px 20px;
-  border: none;
-  background: white;
-  color: #3498db;
+.toggle-label {
   font-size: 0.95em;
+  color: #7f8c8d;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.toggle-label.active {
+  color: #2c3e50;
   font-weight: 600;
+}
+
+.toggle-switch {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  background-color: #95a5a6;
+  border-radius: 34px;
   cursor: pointer;
-  transition: all 0.3s;
-  margin: 0;
+  transition: background-color 0.3s ease;
 }
 
-.time-mode-button:hover {
-  background: #ebf5fb;
-  transform: none;
-  box-shadow: none;
+.toggle-switch:hover {
+  background-color: #7f8c8d;
 }
 
-.time-mode-button.active {
-  background: #3498db;
-  color: white;
+.toggle-input {
+  opacity: 0;
+  width: 0;
+  height: 0;
 }
 
-.time-mode-button:first-child {
-  border-right: 1px solid #3498db;
+.toggle-input:checked + .toggle-slider:before {
+  transform: translateX(24px);
+}
+
+.toggle-input:checked ~ .toggle-slider {
+  background-color: #3498db;
+}
+
+.toggle-slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: transparent;
+  border-radius: 34px;
+  transition: 0.3s;
+}
+
+.toggle-slider:before {
+  content: "";
+  position: absolute;
+  height: 22px;
+  width: 22px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: 0.3s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .button-group {
@@ -949,4 +984,71 @@ button:disabled {
   font-style: italic;
   text-align: center;
   padding: 20px;
+}
+
+/* Bus Card Enhancements */
+.bus-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.bus-title {
+  flex: 1;
+}
+
+.refresh-bus-btn {
+  background: #ecf0f1;
+  color: #3498db;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.1em;
+  transition: all 0.3s ease;
+  padding: 0;
+  margin: 0;
+}
+
+.refresh-bus-btn:hover {
+  background: #3498db;
+  color: white;
+  transform: rotate(180deg);
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+}
+
+.bus-current-status {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 12px 16px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: white;
+  font-weight: 600;
+}
+
+.status-icon {
+  font-size: 1.2em;
+}
+
+.status-text {
+  font-size: 0.95em;
+}
+
+.estimated-time {
+  color: #2980b9;
+  font-weight: 600;
 }
