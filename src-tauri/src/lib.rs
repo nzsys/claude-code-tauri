@@ -83,7 +83,7 @@ pub struct StationLineListResponse {
 
 // Tauri commands
 #[tauri::command]
-async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String> {
+async fn search_buses(_request: BusSearchRequest) -> Result<Vec<BusInfo>, String> {
     // For now, return mock data
     // TODO: Implement actual API call
     let mock_buses = vec![
@@ -180,9 +180,10 @@ async fn search_station_suggestions(search_word: String) -> Result<Vec<StationPr
 async fn get_station_timetable(station_id: i32) -> Result<StationLineListResponse, String> {
     let client = reqwest::Client::new();
 
+    let station_id_str = station_id.to_string();
     let mut params = std::collections::HashMap::new();
     params.insert("kind", "0");
-    params.insert("station_id", &station_id.to_string());
+    params.insert("station_id", station_id_str.as_str());
     params.insert("lang", "");
 
     let response = client
