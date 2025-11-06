@@ -3,6 +3,7 @@ use tauri::Manager;
 use std::sync::Mutex;
 use rusqlite::{Connection, params};
 use std::path::PathBuf;
+use chrono::Datelike;
 
 // Global state for saved bus stops and database
 struct AppState {
@@ -572,6 +573,9 @@ async fn search_buses(
                 updated_at: chrono::Local::now().to_rfc3339(),
                 latitude,
                 longitude,
+                stops_away: None,
+                estimated_minutes: None,
+                last_stop_name: None,
             };
 
             // Filter by destination if provided
