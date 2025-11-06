@@ -377,68 +377,74 @@ async fn search_buses(
                         .send()
                         .await {
 
-                        if let Ok(busstop_data) = busstop_response.json::<BusStopListResponse>().await {
-                            println!("Get_busstop_list returned {} stop data entries", busstop_data.data.len());
+                        let response_text = busstop_response.text().await.unwrap_or_default();
+                        println!("Get_busstop_list raw response: {}", &response_text[..response_text.len().min(500)]);
 
-                            // Find the first bus arriving after current time
-                            for stop_data in &busstop_data.data {
-                                println!("Checking stop_data: line_id={}, station_id={}, time_list.len()={}",
-                                    stop_data.line_id, stop_data.station_id, stop_data.time_list.len());
+                        match serde_json::from_str::<BusStopListResponse>(&response_text) {
+                            Ok(busstop_data) => {
+                                println!("Get_busstop_list returned {} stop data entries", busstop_data.data.len());
 
-                                if let Some(next_bus) = stop_data.time_list.iter()
-                                    .find(|bus| bus.time >= current_time_str) {
+                                // Find the first bus arriving after current time
+                                for stop_data in &busstop_data.data {
+                                    println!("Checking stop_data: line_id={}, station_id={}, time_list.len()={}",
+                                        stop_data.line_id, stop_data.station_id, stop_data.time_list.len());
 
-                                    println!("Found next bus: time={}, delay={}, status={}",
-                                        next_bus.time, next_bus.delay_time, next_bus.bus_status);
+                                    if let Some(next_bus) = stop_data.time_list.iter()
+                                        .find(|bus| bus.time >= current_time_str) {
 
-                                    // Set arrival time
-                                    bus_info.arrival_time = Some(next_bus.time.clone());
+                                        println!("Found next bus: time={}, delay={}, status={}",
+                                            next_bus.time, next_bus.delay_time, next_bus.bus_status);
 
-                                    // Set delay time
-                                    bus_info.delay_minutes = Some(next_bus.delay_time);
+                                        // Set arrival time
+                                        bus_info.arrival_time = Some(next_bus.time.clone());
 
-                                    // Map bus_status to congestion level
-                                    bus_info.congestion_level = match next_bus.bus_status {
-                                        0 => Some("運行前".to_string()),
-                                        1 => Some("空席あり".to_string()),
-                                        2 => Some("立席あり".to_string()),
-                                        3 => Some("混雑".to_string()),
-                                        4 => Some("満員".to_string()),
-                                        _ => Some("不明".to_string()),
-                                    };
+                                        // Set delay time
+                                        bus_info.delay_minutes = Some(next_bus.delay_time);
 
-                                    // Update timestamp
-                                    bus_info.updated_at = chrono::Local::now().to_rfc3339();
+                                        // Map bus_status to congestion level
+                                        bus_info.congestion_level = match next_bus.bus_status {
+                                            0 => Some("運行前".to_string()),
+                                            1 => Some("空席あり".to_string()),
+                                            2 => Some("立席あり".to_string()),
+                                            3 => Some("混雑".to_string()),
+                                            4 => Some("満員".to_string()),
+                                            _ => Some("不明".to_string()),
+                                        };
 
-                                    // Calculate stops away (how many stops until arrival)
-                                    if next_bus.last_stop_order > 0 {
-                                        let stops_remaining = stop_data.pos - next_bus.last_stop_order;
-                                        if stops_remaining > 0 {
-                                            bus_info.stops_away = Some(stops_remaining);
+                                        // Update timestamp
+                                        bus_info.updated_at = chrono::Local::now().to_rfc3339();
 
-                                            // Estimate arrival time based on segment time and current position
-                                            // Assume uniform time distribution across stops
-                                            let total_stops = stop_data.pos; // Total stops in route
-                                            if total_stops > 0 {
-                                                let time_per_stop = segment.sec_time / total_stops;
-                                                let estimated_time = (time_per_stop * stops_remaining) / 60; // Convert to minutes
-                                                let estimated_with_delay = estimated_time + next_bus.delay_time;
-                                                bus_info.estimated_minutes = Some(estimated_with_delay.max(0));
+                                        // Calculate stops away (how many stops until arrival)
+                                        if next_bus.last_stop_order > 0 {
+                                            let stops_remaining = stop_data.pos - next_bus.last_stop_order;
+                                            if stops_remaining > 0 {
+                                                bus_info.stops_away = Some(stops_remaining);
+
+                                                // Estimate arrival time based on segment time and current position
+                                                // Assume uniform time distribution across stops
+                                                let total_stops = stop_data.pos; // Total stops in route
+                                                if total_stops > 0 {
+                                                    let time_per_stop = segment.sec_time / total_stops;
+                                                    let estimated_time = (time_per_stop * stops_remaining) / 60; // Convert to minutes
+                                                    let estimated_with_delay = estimated_time + next_bus.delay_time;
+                                                    bus_info.estimated_minutes = Some(estimated_with_delay.max(0));
+                                                }
+
+                                                // Set last stop name (from last_stop ID)
+                                                // Note: Would need to fetch station name from API, for now use ID
+                                                bus_info.last_stop_name = Some(format!("停留所 #{}", next_bus.last_stop));
                                             }
-
-                                            // Set last stop name (from last_stop ID)
-                                            // Note: Would need to fetch station name from API, for now use ID
-                                            bus_info.last_stop_name = Some(format!("停留所 #{}", next_bus.last_stop));
                                         }
-                                    }
 
-                                    break;
-                                } else {
-                                    println!("No bus found after current time {} in this stop_data", current_time_str);
+                                        break;
+                                    } else {
+                                        println!("No bus found after current time {} in this stop_data", current_time_str);
+                                    }
                                 }
                             }
-                        } else {
-                            println!("Failed to parse Get_busstop_list response");
+                            Err(e) => {
+                                println!("Failed to parse Get_busstop_list response: {}", e);
+                            }
                         }
                     } else {
                         println!("Failed to call Get_busstop_list API");
@@ -448,20 +454,22 @@ async fn search_buses(
                     if bus_info.arrival_time.is_none() {
                         println!("No real-time data available, falling back to timetable");
 
-                        // Determine dia_flg: 0 = weekday, 1 = Saturday, 2 = Sunday/Holiday
-                        let dia_flg = match current_time.weekday() {
-                            chrono::Weekday::Sat => 1,
-                            chrono::Weekday::Sun => 2,
-                            _ => 0,
+                        // Determine dia_flg based on Sapporo API conventions
+                        // Note: Sapporo API uses 1,2,3,4 (not 0,1,2)
+                        // We'll try to match by checking all available dia_flg values
+                        let preferred_dia_flg = match current_time.weekday() {
+                            chrono::Weekday::Sat => 2,  // Assuming 2 = Saturday
+                            chrono::Weekday::Sun => 3,  // Assuming 3 = Sunday
+                            _ => 1,                      // Assuming 1 = Weekday
                         };
-                        println!("Using dia_flg={} for weekday {:?}", dia_flg, current_time.weekday());
+                        println!("Trying dia_flg={} for weekday {:?}", preferred_dia_flg, current_time.weekday());
 
                         // Try to get from cache first
                         let mut timetable_entries = get_cached_timetable(
                             &app_handle,
                             &route.pattern,
                             &segment.line_id.to_string(),
-                            dia_flg,
+                            preferred_dia_flg,
                         ).ok();
 
                         println!("Cache lookup result: {} entries",
@@ -495,31 +503,46 @@ async fn search_buses(
                                             route_item.line_id, route_item.dia_list.len());
 
                                         if route_item.line_id == segment.line_id.to_string() {
-                                            println!("Matched line_id! Looking for dia_flg={}", dia_flg);
+                                            println!("Matched line_id! Looking for dia_flg={}", preferred_dia_flg);
 
                                             // Look through dia_list for time entries
-                                            for dia in route_item.dia_list {
+                                            // Try preferred dia_flg first, then fallback to first available
+                                            let mut found_dia = None;
+                                            for dia in &route_item.dia_list {
                                                 println!("Checking dia: dia_flg={}, time_table.len()={}",
                                                     dia.dia_flg, dia.time_table.len());
 
-                                                if dia.dia_flg == dia_flg {
-                                                    println!("Matched dia_flg! Saving {} entries to cache",
+                                                if dia.dia_flg == preferred_dia_flg {
+                                                    found_dia = Some(dia);
+                                                    println!("Matched preferred dia_flg! Using {} entries",
                                                         dia.time_table.len());
-
-                                                    // Save to cache
-                                                    let _ = save_timetable_to_cache(
-                                                        &app_handle,
-                                                        &route.pattern,
-                                                        &segment.line_id.to_string(),
-                                                        &segment.from_id.to_string(),
-                                                        &segment.to_id.to_string(),
-                                                        dia_flg,
-                                                        &dia.time_table,
-                                                    );
-
-                                                    timetable_entries = Some(dia.time_table.clone());
                                                     break;
                                                 }
+                                            }
+
+                                            // If preferred dia_flg not found, use first available
+                                            if found_dia.is_none() && !route_item.dia_list.is_empty() {
+                                                found_dia = Some(&route_item.dia_list[0]);
+                                                println!("Preferred dia_flg not found, using first available dia_flg={}",
+                                                    route_item.dia_list[0].dia_flg);
+                                            }
+
+                                            if let Some(dia) = found_dia {
+                                                println!("Saving {} entries to cache",
+                                                    dia.time_table.len());
+
+                                                // Save to cache
+                                                let _ = save_timetable_to_cache(
+                                                    &app_handle,
+                                                    &route.pattern,
+                                                    &segment.line_id.to_string(),
+                                                    &segment.from_id.to_string(),
+                                                    &segment.to_id.to_string(),
+                                                    dia.dia_flg,
+                                                    &dia.time_table,
+                                                );
+
+                                                timetable_entries = Some(dia.time_table.clone());
                                             }
                                             break;
                                         }
