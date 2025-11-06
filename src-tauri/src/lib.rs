@@ -1020,8 +1020,6 @@ async fn get_bus_timetable_list(
     time: String,
     end_st: String,
 ) -> Result<BusStopTimetableResponse, String> {
-              course_id, station_id, time, end_st);
-
     let client = reqwest::Client::new();
     let params = [
         ("kind", "0"),
