@@ -378,6 +378,8 @@ async fn search_buses(
                     stops_away: None,
                     estimated_minutes: None,
                     last_stop_name: None,
+                    course_id: segment.line_id.to_string(),
+                    end_station_id: request.end_station_id.clone(),
                 };
 
                 // Only get real-time data for bus segments (line_type == 10 means bus)
@@ -633,7 +635,7 @@ async fn search_buses(
                 stops_away: None,
                 estimated_minutes: None,
                 last_stop_name: None,
-                course_id: bus.course_id.clone(),
+                course_id: bus.course_id.to_string(),
                 end_station_id: request.end_station_id.clone(),
             };
 
