@@ -247,9 +247,8 @@ function App() {
         </button>
       </div>
 
-      {/* Bus Search Section */}
-      <div className="search-section bus-search">
-        <h2>バス検索</h2>
+      {/* Search Section */}
+      <div className="search-section">
         <form onSubmit={searchBuses}>
           {/* Departure Station */}
           <div className="form-group">
@@ -396,14 +395,13 @@ function App() {
         {error && <div className="error">{error}</div>}
       </div>
 
-      {/* Bus Results */}
+      {/* Results */}
       {buses.length > 0 && (
         <div className="results-section">
-          <h2>バス一覧と現在地</h2>
+          <h2>検索結果 ({buses.length}件)</h2>
           <div className="results-layout">
-            {/* Bus List */}
+            {/* Bus/Transit List */}
             <div className="bus-list-container">
-              <h3>バス一覧 ({buses.length}件)</h3>
               <div className="bus-list">
                 {buses.map((bus) => (
                   <div key={bus.bus_id} className="bus-card">
@@ -468,11 +466,11 @@ function App() {
               </div>
             </div>
 
-            {/* Map */}
-            <div className="map-section">
+            {/* Map - Temporarily disabled */}
+            {/* <div className="map-section">
               <h3>バス現在地マップ</h3>
               <BusMap buses={buses} />
-            </div>
+            </div> */}
           </div>
         </div>
       )}

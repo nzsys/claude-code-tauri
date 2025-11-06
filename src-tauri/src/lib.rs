@@ -556,26 +556,39 @@ async fn search_buses(
                         }
 
                         // Use the timetable data (from cache or API)
+                        // Get all buses within 1 hour from now
                         if let Some(entries) = timetable_entries {
-                            println!("Using {} timetable entries, looking for time after {}",
-                                entries.len(), current_time_str);
+                            let one_hour_later = current_time + chrono::Duration::hours(1);
+                            let one_hour_later_str = one_hour_later.format("%H:%M").to_string();
 
-                            if let Some(time_entry) = entries.iter()
-                                .find(|entry| entry.from_time >= current_time_str) {
+                            println!("Using {} timetable entries, looking for times between {} and {}",
+                                entries.len(), current_time_str, one_hour_later_str);
 
-                                println!("Found timetable entry: from_time={}", time_entry.from_time);
-                                bus_info.arrival_time = Some(time_entry.from_time.clone());
-                                bus_info.updated_at = chrono::Local::now().to_rfc3339();
-                            } else {
-                                println!("No timetable entry found after current time");
+                            let matching_entries: Vec<_> = entries.iter()
+                                .filter(|entry| entry.from_time >= current_time_str && entry.from_time <= one_hour_later_str)
+                                .collect();
+
+                            println!("Found {} buses within 1 hour", matching_entries.len());
+
+                            for time_entry in matching_entries {
+                                let mut bus_copy = bus_info.clone();
+                                bus_copy.arrival_time = Some(time_entry.from_time.clone());
+                                bus_copy.updated_at = chrono::Local::now().to_rfc3339();
+                                println!("Adding bus with arrival time: {}", time_entry.from_time);
+                                buses.push(bus_copy);
                             }
                         } else {
                             println!("No timetable entries available");
+                            buses.push(bus_info);
                         }
+                    } else {
+                        // Real-time data was found, add the single bus
+                        buses.push(bus_info);
                     }
+                } else {
+                    // Not a bus segment (e.g., walking), just add it
+                    buses.push(bus_info);
                 }
-
-                buses.push(bus_info);
             }
         }
 
