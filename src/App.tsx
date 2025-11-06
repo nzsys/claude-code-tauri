@@ -257,22 +257,37 @@ function App() {
               const approachInfo = approachResult.value;
               updatedBus.delay_minutes = approachInfo.delay_time;
 
+              console.log(`Bus ${bus.bus_id}: last_stop=${approachInfo.last_stop}, last_stop_order=${approachInfo.last_stop_order}`);
+
               // Calculate stops away and find last stop name
               if (stopsResult.status === "fulfilled") {
                 const stops = stopsResult.value;
-                const lastStopData = stops.find(s => s.station_id === String(approachInfo.last_stop));
-                if (lastStopData) {
-                  updatedBus.last_stop_name = lastStopData.name;
-                }
 
-                // Calculate stops away: find positions
-                const currentStopIndex = stops.findIndex(s => s.station_id === String(approachInfo.last_stop));
-                const boardingStopIndex = stops.findIndex(s => s.station_id === bus.stop_id);
+                // Skip if bus hasn't started (last_stop is 0 or invalid)
+                if (approachInfo.last_stop > 0) {
+                  const lastStopData = stops.find(s => s.station_id === String(approachInfo.last_stop));
+                  if (lastStopData) {
+                    updatedBus.last_stop_name = lastStopData.name;
+                  }
 
-                if (currentStopIndex !== -1 && boardingStopIndex !== -1 && boardingStopIndex > currentStopIndex) {
-                  updatedBus.stops_away = boardingStopIndex - currentStopIndex;
+                  // Calculate stops away: find positions
+                  const currentStopIndex = stops.findIndex(s => s.station_id === String(approachInfo.last_stop));
+                  const boardingStopIndex = stops.findIndex(s => s.station_id === bus.stop_id);
+
+                  console.log(`Bus ${bus.bus_id}: currentStopIndex=${currentStopIndex}, boardingStopIndex=${boardingStopIndex}`);
+
+                  if (currentStopIndex !== -1 && boardingStopIndex !== -1 && boardingStopIndex > currentStopIndex) {
+                    updatedBus.stops_away = boardingStopIndex - currentStopIndex;
+                    console.log(`Bus ${bus.bus_id}: stops_away=${updatedBus.stops_away}`);
+                  } else {
+                    console.log(`Bus ${bus.bus_id}: Cannot calculate stops_away (already passed or invalid indices)`);
+                  }
+                } else {
+                  console.log(`Bus ${bus.bus_id}: Not yet started (last_stop=0)`);
                 }
               }
+            } else {
+              console.log(`Bus ${bus.bus_id}: Approach info fetch failed`);
             }
 
             return updatedBus;
