@@ -397,6 +397,47 @@ async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String>
                             }
                         }
                     }
+
+                    // Fallback to timetable if no real-time data available
+                    if bus_info.arrival_time.is_none() {
+                        let timetable_params = [
+                            ("kind", "0"),
+                            ("start_station_id", request.start_station_id.as_ref().unwrap().as_str()),
+                            ("end_station_id", request.end_station_id.as_ref().unwrap().as_str()),
+                            ("time_from", request.time_from.as_ref().unwrap().as_str()),
+                            ("pattern", &route.pattern),
+                            ("lang", ""),
+                        ];
+
+                        if let Ok(timetable_response) = client
+                            .post("https://ekibus-api.city.sapporo.jp/Get_search_route_timetable")
+                            .form(&timetable_params)
+                            .send()
+                            .await {
+
+                            if let Ok(timetable_data) = timetable_response.json::<SearchRouteTimetableResponse>().await {
+                                // Find the matching route segment in the timetable
+                                for route_item in timetable_data.search_route_timetable.time_table.route_list {
+                                    if route_item.line_id == segment.line_id.to_string() {
+                                        // Look through dia_list for time entries
+                                        for dia in route_item.dia_list {
+                                            // Find the first time entry after current time
+                                            if let Some(time_entry) = dia.time_table.iter()
+                                                .find(|entry| entry.from_time >= current_time_str) {
+
+                                                bus_info.arrival_time = Some(time_entry.from_time.clone());
+                                                bus_info.updated_at = chrono::Local::now().to_rfc3339();
+                                                break;
+                                            }
+                                        }
+                                        if bus_info.arrival_time.is_some() {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 buses.push(bus_info);
