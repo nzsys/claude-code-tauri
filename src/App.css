@@ -235,6 +235,107 @@ button:disabled {
   color: #7f8c8d;
 }
 
+.route-details {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 2px solid #ecf0f1;
+}
+
+.route-segment {
+  padding: 10px;
+  margin-bottom: 8px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 4px solid #3498db;
+}
+
+.route-segment strong {
+  color: #2c3e50;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.timetable-section {
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 30px;
+}
+
+.timetable-route {
+  margin-bottom: 30px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.timetable-route h3 {
+  margin-top: 0;
+  color: #2c3e50;
+  border-bottom: 2px solid #3498db;
+  padding-bottom: 10px;
+}
+
+.dia-section {
+  margin-top: 20px;
+}
+
+.dia-section h4 {
+  color: #34495e;
+  margin-bottom: 15px;
+  background: #e8f4f8;
+  padding: 8px 16px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.time-table-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.time-entry {
+  background: white;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #dfe6e9;
+  text-align: center;
+  font-size: 0.9em;
+  font-weight: 500;
+  color: #2c3e50;
+  transition: background-color 0.2s;
+}
+
+.time-entry:hover {
+  background: #e8f4f8;
+}
+
+.help-section {
+  background: #fff3cd;
+  padding: 20px;
+  border-radius: 12px;
+  border-left: 4px solid #ffc107;
+  margin-top: 20px;
+}
+
+.help-section h3 {
+  margin-top: 0;
+  color: #856404;
+}
+
+.help-section ul {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+
+.help-section li {
+  color: #856404;
+  margin: 5px 0;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #ecf0f1;
@@ -251,7 +352,8 @@ button:disabled {
 
   .search-section,
   .bus-card,
-  .bus-stops-section {
+  .bus-stops-section,
+  .timetable-section {
     background: #2c3e50;
   }
 
@@ -282,6 +384,52 @@ button:disabled {
 
   .no-results {
     background: #2c3e50;
+  }
+
+  .route-segment {
+    background: #34495e;
+    border-left-color: #3498db;
+  }
+
+  .route-segment strong {
+    color: #ecf0f1;
+  }
+
+  .route-details {
+    border-top-color: #445566;
+  }
+
+  .timetable-route {
+    background: #34495e;
+  }
+
+  .timetable-route h3 {
+    color: #ecf0f1;
+  }
+
+  .dia-section h4 {
+    background: #2c3e50;
+    color: #3498db;
+  }
+
+  .time-entry {
+    background: #2c3e50;
+    border-color: #445566;
+    color: #ecf0f1;
+  }
+
+  .time-entry:hover {
+    background: #34495e;
+  }
+
+  .help-section {
+    background: #34495e;
+    border-left-color: #f39c12;
+  }
+
+  .help-section h3,
+  .help-section li {
+    color: #f39c12;
   }
 }
 

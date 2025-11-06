@@ -292,7 +292,7 @@ async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String>
     let client = reqwest::Client::new();
 
     // Build request body for bus location API
-    let mut body = serde_json::json!({
+    let body = serde_json::json!({
         "kind": "0",
         "lang": ""
     });

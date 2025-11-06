@@ -2,16 +2,101 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
-interface BusInfo {
-  bus_id: string;
-  route_name: string;
-  destination: string;
-  stop_id: string;
-  stop_name: string;
-  arrival_time: string | null;
-  delay_minutes: number | null;
-  congestion_level: string | null;
-  updated_at: string;
+// Sapporo Transit API types
+interface RouteListItem {
+  line_id: number;
+  line_name: string;
+  company_id: string;
+  from_id: number;
+  from_name: string;
+  to_id: number;
+  to_name: string;
+  sec_time: number;
+  fare: string;
+  c_fare: number;
+  line_type: number;
+  connect_time: number;
+  connect_distance: number;
+  connect_flag: number;
+  service_count: number;
+}
+
+interface WalkData {
+  start_walk_time: number;
+  start_walk_dist: number;
+  goal_walk_time: number;
+  goal_walk_dist: number;
+}
+
+interface Route {
+  total_time: number;
+  total_connect_time: number;
+  line_count: number;
+  fare: number;
+  c_fare: number;
+  route_list: RouteListItem[];
+  pattern: string;
+  service_count: number;
+  service_count_raw: number;
+  service_frequency: number;
+  walk_data: WalkData;
+}
+
+interface SearchRouteResponse {
+  result: string;
+  search_route: {
+    route: Route[];
+  };
+}
+
+interface TimeTableEntry {
+  from_time: string;
+  to_time: string;
+  note: string;
+  fromto: string;
+  course_id: number;
+  connect_index: number;
+  prev_index: number;
+}
+
+interface DiaList {
+  dia_flg: number;
+  time_table: TimeTableEntry[];
+}
+
+interface TimetableCourse {
+  course_id: number;
+  course_name: string;
+  line_id: number;
+  line_name: string;
+}
+
+interface RouteListForTimetable {
+  line_id: string;
+  from_id: string;
+  to_id: string;
+  connect_time: number;
+  connect_distance: number;
+  line_name: string;
+  from_name: string;
+  to_name: string;
+  course_list: TimetableCourse[];
+  dia_list: DiaList[];
+}
+
+interface SearchRouteTimetableResponse {
+  result: string;
+  search_route_timetable: {
+    time_table: {
+      from_id: string;
+      to_id: string;
+      pattern: string;
+      from_name: string;
+      to_name: string;
+      day_type: number;
+      route_list: RouteListForTimetable[];
+    };
+  };
 }
 
 interface BusStop {
@@ -22,131 +107,118 @@ interface BusStop {
 }
 
 function App() {
-  const [destination, setDestination] = useState("");
-  const [timeFrom, setTimeFrom] = useState("");
-  const [timeTo, setTimeTo] = useState("");
-  const [buses, setBuses] = useState<BusInfo[]>([]);
-  const [busStops, setBusStops] = useState<BusStop[]>([]);
+  const [startStation, setStartStation] = useState("420005"); // 南６条西１１丁目
+  const [endStation, setEndStation] = useState("420004"); // すすきの
+  const [routes, setRoutes] = useState<Route[]>([]);
+  const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
+  const [timetable, setTimetable] = useState<SearchRouteTimetableResponse["search_route_timetable"]["time_table"] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    loadBusStops();
-  }, []);
-
-  async function loadBusStops() {
-    try {
-      const stops = await invoke<BusStop[]>("get_bus_stops");
-      setBusStops(stops);
-    } catch (err) {
-      console.error("Failed to load bus stops:", err);
-    }
-  }
-
-  async function searchBuses(e: React.FormEvent) {
+  async function searchRoutes(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setRoutes([]);
+    setSelectedRoute(null);
+    setTimetable(null);
 
     try {
-      const result = await invoke<BusInfo[]>("search_buses", {
-        request: {
-          destination: destination || null,
-          time_from: timeFrom || null,
-          time_to: timeTo || null,
-        },
+      const result = await invoke<SearchRouteResponse>("search_routes", {
+        startSt: startStation,
+        endSt: endStation,
       });
-      setBuses(result);
+
+      if (result.result === "0" && result.search_route.route.length > 0) {
+        setRoutes(result.search_route.route);
+      } else {
+        setError("ルートが見つかりませんでした");
+      }
     } catch (err) {
       setError(`検索に失敗しました: ${err}`);
+      console.error("Search error:", err);
     } finally {
       setLoading(false);
     }
   }
 
-  async function fetchLiveData() {
+  async function fetchRouteTimetable(route: Route) {
     setLoading(true);
     setError("");
+    setSelectedRoute(route);
 
     try {
-      const stopIds = busStops.map((stop) => stop.stop_id);
-      const data = await invoke<string>("fetch_bus_location_data", {
-        stopIdList: stopIds,
-      });
-      console.log("Bus location data:", data);
-      // TODO: Parse and display the data
+      const result = await invoke<SearchRouteTimetableResponse>(
+        "get_route_timetable",
+        {
+          pattern: route.pattern,
+        }
+      );
+
+      if (result.result === "0") {
+        setTimetable(result.search_route_timetable.time_table);
+      } else {
+        setError("時刻表の取得に失敗しました");
+      }
     } catch (err) {
-      setError(`データ取得に失敗しました: ${err}`);
+      setError(`時刻表の取得に失敗しました: ${err}`);
+      console.error("Timetable error:", err);
     } finally {
       setLoading(false);
     }
   }
 
-  function getCongestionColor(level: string | null): string {
-    if (!level) return "gray";
-    switch (level) {
-      case "低":
-        return "green";
-      case "中":
-        return "orange";
-      case "高":
-        return "red";
-      default:
-        return "gray";
-    }
+  function formatTime(minutes: number): string {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return hours > 0 ? `${hours}時間${mins}分` : `${mins}分`;
   }
 
-  function getDelayText(minutes: number | null): string {
-    if (minutes === null) return "情報なし";
-    if (minutes === 0) return "定刻";
-    if (minutes > 0) return `${minutes}分遅れ`;
-    return `${Math.abs(minutes)}分早い`;
+  function getDayTypeName(diaFlg: number): string {
+    switch (diaFlg) {
+      case 1:
+        return "平日";
+      case 2:
+        return "土曜日";
+      case 3:
+        return "日曜・祝日";
+      default:
+        return `ダイヤ ${diaFlg}`;
+    }
   }
 
   return (
     <main className="container">
-      <h1>札幌バストラッカー</h1>
+      <h1>札幌バス・地下鉄ルート検索</h1>
 
       <div className="search-section">
-        <h2>バス検索</h2>
-        <form onSubmit={searchBuses}>
+        <h2>ルート検索</h2>
+        <form onSubmit={searchRoutes}>
           <div className="form-group">
-            <label htmlFor="destination">目的地:</label>
+            <label htmlFor="start-station">出発駅ID:</label>
             <input
-              id="destination"
+              id="start-station"
               type="text"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              placeholder="例: 札幌駅"
+              value={startStation}
+              onChange={(e) => setStartStation(e.target.value)}
+              placeholder="例: 420005 (南６条西１１丁目)"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="time-from">開始時刻:</label>
+            <label htmlFor="end-station">到着駅ID:</label>
             <input
-              id="time-from"
-              type="time"
-              value={timeFrom}
-              onChange={(e) => setTimeFrom(e.target.value)}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="time-to">終了時刻:</label>
-            <input
-              id="time-to"
-              type="time"
-              value={timeTo}
-              onChange={(e) => setTimeTo(e.target.value)}
+              id="end-station"
+              type="text"
+              value={endStation}
+              onChange={(e) => setEndStation(e.target.value)}
+              placeholder="例: 420004 (すすきの)"
             />
           </div>
 
           <div className="button-group">
             <button type="submit" disabled={loading}>
-              {loading ? "検索中..." : "検索"}
-            </button>
-            <button type="button" onClick={fetchLiveData} disabled={loading}>
-              リアルタイムデータ取得
+              {loading ? "検索中..." : "ルート検索"}
             </button>
           </div>
         </form>
@@ -154,66 +226,84 @@ function App() {
         {error && <div className="error">{error}</div>}
       </div>
 
-      <div className="results-section">
-        <h2>バス一覧</h2>
-        {buses.length === 0 ? (
-          <p className="no-results">検索結果がありません</p>
-        ) : (
+      {routes.length > 0 && (
+        <div className="results-section">
+          <h2>検索結果 ({routes.length}件のルート)</h2>
           <div className="bus-list">
-            {buses.map((bus) => (
-              <div key={bus.bus_id} className="bus-card">
+            {routes.map((route, index) => (
+              <div
+                key={index}
+                className="bus-card"
+                onClick={() => fetchRouteTimetable(route)}
+                style={{ cursor: "pointer" }}
+              >
                 <div className="bus-header">
-                  <h3>{bus.route_name}</h3>
-                  <span className="destination">{bus.destination}行き</span>
+                  <h3>ルート {index + 1}</h3>
+                  <span className="destination">
+                    所要時間: {formatTime(route.total_time)}
+                  </span>
                 </div>
                 <div className="bus-details">
                   <div className="detail-item">
-                    <span className="label">バス停:</span>
-                    <span>{bus.stop_name}</span>
+                    <span className="label">運賃:</span>
+                    <span>¥{route.fare} (子供: ¥{route.c_fare})</span>
                   </div>
                   <div className="detail-item">
-                    <span className="label">到着予定:</span>
-                    <span>{bus.arrival_time || "情報なし"}</span>
+                    <span className="label">乗換回数:</span>
+                    <span>{route.line_count - 1}回</span>
                   </div>
                   <div className="detail-item">
-                    <span className="label">遅延状況:</span>
-                    <span className="delay-info">
-                      {getDelayText(bus.delay_minutes)}
-                    </span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">混雑度:</span>
-                    <span
-                      className="congestion-badge"
-                      style={{
-                        backgroundColor: getCongestionColor(
-                          bus.congestion_level
-                        ),
-                      }}
-                    >
-                      {bus.congestion_level || "不明"}
-                    </span>
+                    <span className="label">運行本数:</span>
+                    <span>{route.service_count}本/日</span>
                   </div>
                 </div>
-                <div className="bus-footer">
-                  <small>更新: {new Date(bus.updated_at).toLocaleString("ja-JP")}</small>
+                <div className="route-details">
+                  {route.route_list.map((segment, segIndex) => (
+                    <div key={segIndex} className="route-segment">
+                      <strong>{segment.line_name}</strong>
+                      <br />
+                      {segment.from_name} → {segment.to_name} ({segment.sec_time}分)
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div className="bus-stops-section">
-        <h2>登録済みバス停</h2>
-        <div className="bus-stops-list">
-          {busStops.map((stop) => (
-            <div key={stop.stop_id} className="bus-stop-item">
-              <span className="stop-name">{stop.stop_name}</span>
-              <span className="stop-id">ID: {stop.stop_id}</span>
+      {timetable && selectedRoute && (
+        <div className="timetable-section">
+          <h2>
+            時刻表: {timetable.from_name} → {timetable.to_name}
+          </h2>
+          {timetable.route_list.map((routeItem, index) => (
+            <div key={index} className="timetable-route">
+              <h3>{routeItem.line_name}</h3>
+              {routeItem.dia_list.map((dia, diaIndex) => (
+                <div key={diaIndex} className="dia-section">
+                  <h4>{getDayTypeName(dia.dia_flg)}</h4>
+                  <div className="time-table-grid">
+                    {dia.time_table.map((entry, entryIndex) => (
+                      <div key={entryIndex} className="time-entry">
+                        {entry.from_time} → {entry.to_time}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
         </div>
+      )}
+
+      <div className="help-section">
+        <h3>駅IDの例:</h3>
+        <ul>
+          <li>420005: 南６条西１１丁目</li>
+          <li>420004: すすきの</li>
+          <li>420001: 札幌駅前</li>
+        </ul>
       </div>
     </main>
   );
