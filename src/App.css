@@ -103,6 +103,43 @@ input[type="time"]:focus {
   border-color: #3498db;
 }
 
+.time-mode-switch {
+  display: flex;
+  gap: 0;
+  border: 2px solid #3498db;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.time-mode-button {
+  flex: 1;
+  padding: 10px 20px;
+  border: none;
+  background: white;
+  color: #3498db;
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  margin: 0;
+}
+
+.time-mode-button:hover {
+  background: #ebf5fb;
+  transform: none;
+  box-shadow: none;
+}
+
+.time-mode-button.active {
+  background: #3498db;
+  color: white;
+}
+
+.time-mode-button:first-child {
+  border-right: 1px solid #3498db;
+}
+
 .button-group {
   display: flex;
   gap: 10px;
@@ -754,4 +791,162 @@ button:disabled {
   .stations-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* DatePicker Customization */
+.react-datepicker__day--weekend:not(.react-datepicker__day--outside-month) {
+  color: #e74c3c !important;
+}
+
+.react-datepicker__day:nth-of-type(7n):not(.react-datepicker__day--outside-month) {
+  color: #3498db !important;
+}
+
+.react-datepicker__current-month,
+.react-datepicker-time__header {
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.react-datepicker__day-name {
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.react-datepicker__day-name:first-child {
+  color: #e74c3c;
+}
+
+.react-datepicker__day-name:last-child {
+  color: #3498db;
+}
+
+/* Clickable Bus Card */
+.bus-card.clickable {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.bus-card.clickable:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  background: white;
+  border-radius: 16px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px;
+  border-bottom: 2px solid #ecf0f1;
+}
+
+.modal-header h2 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.5em;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5em;
+  color: #95a5a6;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.3s;
+}
+
+.modal-close:hover {
+  background: #ecf0f1;
+  color: #2c3e50;
+  transform: none;
+  box-shadow: none;
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.bus-detail-info {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+
+.bus-detail-info p {
+  margin: 12px 0;
+  color: #2c3e50;
+  line-height: 1.6;
+}
+
+.bus-detail-info strong {
+  color: #34495e;
+  margin-right: 8px;
+}
+
+.bus-stops-timeline {
+  margin-top: 20px;
+}
+
+.bus-stops-timeline h3 {
+  color: #34495e;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #3498db;
+}
+
+.info-text {
+  color: #7f8c8d;
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
 }

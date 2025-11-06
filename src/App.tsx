@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import DatePicker from "react-datepicker";
+import DatePicker, { registerLocale } from "react-datepicker";
+import { ja } from "date-fns/locale";
 import "react-datepicker/dist/react-datepicker.css";
 import BusMap from "./BusMap";
 import "./App.css";
+
+registerLocale("ja", ja);
 
 interface BusInfo {
   bus_id: string;
@@ -57,6 +60,10 @@ function App() {
   // Selected stations for display
   const [selectedDepartureStop, setSelectedDepartureStop] = useState<BusStop | null>(null);
   const [selectedArrivalStop, setSelectedArrivalStop] = useState<BusStop | null>(null);
+
+  // Bus detail modal
+  const [selectedBus, setSelectedBus] = useState<BusInfo | null>(null);
+  const [showBusDetail, setShowBusDetail] = useState(false);
 
   useEffect(() => {
     loadSavedStops();
@@ -234,6 +241,15 @@ function App() {
     }
   }
 
+  function openBusDetail(bus: BusInfo) {
+    setSelectedBus(bus);
+    setShowBusDetail(true);
+  }
+
+  function closeBusDetail() {
+    setShowBusDetail(false);
+  }
+
   return (
     <main className="container">
       <div className="header">
@@ -360,27 +376,37 @@ function App() {
 
           {/* Time Selection */}
           <div className="form-group">
-            <label>
-              <input
-                type="checkbox"
-                checked={useCurrentTime}
-                onChange={(e) => setUseCurrentTime(e.target.checked)}
-              />
-              現在時刻で検索
-            </label>
+            <label htmlFor="time-mode">出発時刻:</label>
+            <div className="time-mode-switch">
+              <button
+                type="button"
+                className={`time-mode-button ${useCurrentTime ? 'active' : ''}`}
+                onClick={() => setUseCurrentTime(true)}
+              >
+                現在時刻
+              </button>
+              <button
+                type="button"
+                className={`time-mode-button ${!useCurrentTime ? 'active' : ''}`}
+                onClick={() => setUseCurrentTime(false)}
+              >
+                指定日時
+              </button>
+            </div>
           </div>
 
           {!useCurrentTime && (
             <div className="form-group">
-              <label htmlFor="datetime">出発日時:</label>
+              <label htmlFor="datetime">日時を指定:</label>
               <DatePicker
                 selected={selectedDateTime}
                 onChange={(date) => date && setSelectedDateTime(date)}
                 showTimeSelect
                 timeFormat="HH:mm"
                 timeIntervals={15}
-                dateFormat="yyyy/MM/dd HH:mm"
+                dateFormat="yyyy年MM月dd日 HH:mm"
                 className="datetime-picker"
+                locale="ja"
               />
             </div>
           )}
@@ -403,8 +429,12 @@ function App() {
             {/* Bus/Transit List */}
             <div className="bus-list-container">
               <div className="bus-list">
-                {buses.map((bus) => (
-                  <div key={bus.bus_id} className="bus-card">
+                {buses.map((bus, index) => (
+                  <div
+                    key={`${bus.bus_id}-${index}`}
+                    className="bus-card clickable"
+                    onClick={() => openBusDetail(bus)}
+                  >
                     <div className="bus-header">
                       <h3>{bus.route_name}</h3>
                       <span className="destination">{bus.destination}行き</span>
@@ -497,6 +527,36 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* Bus Detail Modal */}
+      {showBusDetail && selectedBus && (
+        <div className="modal-overlay" onClick={closeBusDetail}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{selectedBus.route_name}</h2>
+              <button className="modal-close" onClick={closeBusDetail}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="bus-detail-info">
+                <p><strong>行先:</strong> {selectedBus.destination}</p>
+                <p><strong>到着予定:</strong> {selectedBus.arrival_time || "情報なし"}</p>
+                <p><strong>遅延:</strong> {getDelayText(selectedBus.delay_minutes)}</p>
+                <p><strong>混雑度:</strong> {selectedBus.congestion_level || "不明"}</p>
+                {selectedBus.last_stop_name && (
+                  <p><strong>最終通過停留所:</strong> {selectedBus.last_stop_name}</p>
+                )}
+                {selectedBus.stops_away !== null && (
+                  <p><strong>残り停留所数:</strong> あと{selectedBus.stops_away}駅</p>
+                )}
+              </div>
+              <div className="bus-stops-timeline">
+                <h3>停留所一覧</h3>
+                <p className="info-text">※ 停留所の詳細情報は今後実装予定です</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
