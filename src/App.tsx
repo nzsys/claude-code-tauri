@@ -32,6 +32,23 @@ interface StationData {
   name: string;
 }
 
+interface BusStopTimetableStation {
+  station_id: string;
+  station_name: string;
+  time: string;
+}
+
+interface BusApproachInfo {
+  result: string;
+  bus_status: number;
+  last_stop: number;
+  last_stop_order: number;
+  delay_time: number;
+  last_delay_time: number;
+  update_time: string;
+  barrier_free: number;
+}
+
 interface BusStop {
   stop_id: string;
   stop_name: string;
@@ -72,6 +89,8 @@ function App() {
   const [selectedBus, setSelectedBus] = useState<BusInfo | null>(null);
   const [showBusDetail, setShowBusDetail] = useState(false);
   const [busStops, setBusStops] = useState<StationData[]>([]);
+  const [busStopTimetable, setBusStopTimetable] = useState<BusStopTimetableStation[]>([]);
+  const [busApproachInfo, setBusApproachInfo] = useState<BusApproachInfo | null>(null);
   const [loadingStops, setLoadingStops] = useState(false);
 
   useEffect(() => {
@@ -266,31 +285,76 @@ function App() {
     setSelectedBus(bus);
     setShowBusDetail(true);
     setBusStops([]);
+    setBusStopTimetable([]);
+    setBusApproachInfo(null);
 
     console.log("Bus details:", {
       course_id: bus.course_id,
       stop_id: bus.stop_id,
       end_station_id: bus.end_station_id,
+      arrival_time: bus.arrival_time,
     });
 
-    // Only fetch stops if we have the required parameters
-    if (bus.course_id && bus.end_station_id) {
+    // Only fetch data if we have the required parameters
+    if (bus.course_id && bus.end_station_id && bus.arrival_time) {
       setLoadingStops(true);
       try {
-        const stops = await invoke<StationData[]>("get_bus_stops_data", {
-          courseId: bus.course_id,
-          stationId: bus.stop_id,
-          endSt: bus.end_station_id,
-        });
-        console.log("Received stops:", stops);
-        setBusStops(stops);
+        // Fetch all 3 APIs in parallel for better performance
+        const [stopsResult, timetableResult, approachResult] = await Promise.allSettled([
+          // 1. Get stop names list
+          invoke<StationData[]>("get_bus_stops_data", {
+            courseId: bus.course_id,
+            stationId: bus.stop_id,
+            endSt: bus.end_station_id,
+          }),
+          // 2. Get timetable with stop times
+          invoke<{ result: string; line: { station: BusStopTimetableStation[] } }>(
+            "get_bus_timetable_list",
+            {
+              courseId: bus.course_id,
+              stationId: bus.stop_id,
+              time: bus.arrival_time,
+              endSt: bus.end_station_id,
+            }
+          ),
+          // 3. Get real-time approach info (delay, position)
+          invoke<BusApproachInfo>("get_bus_approach_info", {
+            courseId: bus.course_id,
+            stationId: bus.stop_id,
+            time: bus.arrival_time,
+          }),
+        ]);
+
+        // Process stops list
+        if (stopsResult.status === "fulfilled") {
+          console.log("Received stops:", stopsResult.value);
+          setBusStops(stopsResult.value);
+        } else {
+          console.error("Failed to load stops:", stopsResult.reason);
+        }
+
+        // Process timetable
+        if (timetableResult.status === "fulfilled") {
+          console.log("Received timetable:", timetableResult.value.line.station);
+          setBusStopTimetable(timetableResult.value.line.station);
+        } else {
+          console.error("Failed to load timetable:", timetableResult.reason);
+        }
+
+        // Process approach info
+        if (approachResult.status === "fulfilled") {
+          console.log("Received approach info:", approachResult.value);
+          setBusApproachInfo(approachResult.value);
+        } else {
+          console.error("Failed to load approach info:", approachResult.reason);
+        }
       } catch (err) {
-        console.error("Failed to load bus stops:", err);
+        console.error("Failed to load bus details:", err);
       } finally {
         setLoadingStops(false);
       }
     } else {
-      console.warn("Missing required parameters for fetching stops");
+      console.warn("Missing required parameters for fetching bus details");
     }
   }
 
@@ -603,19 +667,59 @@ function App() {
               <div className="bus-detail-info">
                 <p><strong>行先:</strong> {selectedBus.destination}</p>
                 <p><strong>到着予定:</strong> {selectedBus.arrival_time || "情報なし"}</p>
-                <p><strong>遅延:</strong> {getDelayText(selectedBus.delay_minutes)}</p>
-                <p><strong>混雑度:</strong> {selectedBus.congestion_level || "不明"}</p>
-                {selectedBus.last_stop_name && (
-                  <p><strong>最終通過停留所:</strong> {selectedBus.last_stop_name}</p>
-                )}
-                {selectedBus.stops_away !== null && (
-                  <p><strong>残り停留所数:</strong> あと{selectedBus.stops_away}駅</p>
+
+                {/* Real-time approach info */}
+                {busApproachInfo && (
+                  <>
+                    <p><strong>遅延:</strong> <span className={busApproachInfo.delay_time > 0 ? "delay-warning" : ""}>
+                      {busApproachInfo.delay_time > 0 ? `${busApproachInfo.delay_time}分遅れ` :
+                       busApproachInfo.delay_time < 0 ? `${Math.abs(busApproachInfo.delay_time)}分早い` : "定刻"}
+                    </span></p>
+                    <p><strong>運行状況:</strong> {
+                      busApproachInfo.bus_status === 0 ? "運行中" :
+                      busApproachInfo.bus_status === 1 ? "空席あり" :
+                      busApproachInfo.bus_status === 2 ? "立席あり" :
+                      busApproachInfo.bus_status === 3 ? "混雑" :
+                      busApproachInfo.bus_status === 4 ? "満員" : "不明"
+                    }</p>
+                    <p><strong>最終更新:</strong> {busApproachInfo.update_time}</p>
+                  </>
                 )}
               </div>
+
               <div className="bus-stops-timeline">
-                <h3>停留所一覧</h3>
+                <h3>停留所一覧と予定時刻</h3>
                 {loadingStops ? (
                   <p className="info-text">読み込み中...</p>
+                ) : busStopTimetable.length > 0 ? (
+                  <div className="stops-list">
+                    {busStopTimetable.map((stop) => {
+                      // Determine if this is the last stop (current position)
+                      const isLastStop = busApproachInfo && stop.station_id === String(busApproachInfo.last_stop);
+                      const isCurrentStop = stop.station_id === selectedBus.stop_id;
+
+                      return (
+                        <div
+                          key={stop.station_id}
+                          className={`stop-item ${isLastStop ? "last-passed-stop" : ""} ${isCurrentStop ? "current-stop" : ""}`}
+                        >
+                          <div className="stop-marker">
+                            {isLastStop ? "🚌" : isCurrentStop ? "●" : "○"}
+                          </div>
+                          <div className="stop-info">
+                            <div className="stop-name">{stop.station_name}</div>
+                            <div className="stop-time">{stop.time}</div>
+                            {isLastStop && (
+                              <div className="stop-label">最終通過地点</div>
+                            )}
+                            {isCurrentStop && (
+                              <div className="stop-label">乗車地点</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : busStops.length > 0 ? (
                   <div className="stops-list">
                     {busStops.map((stop) => (
@@ -631,7 +735,7 @@ function App() {
                         <div className="stop-info">
                           <div className="stop-name">{stop.name}</div>
                           {stop.station_id === selectedBus.stop_id && (
-                            <div className="stop-label">現在地</div>
+                            <div className="stop-label">乗車地点</div>
                           )}
                         </div>
                       </div>

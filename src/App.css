@@ -827,6 +827,18 @@ button:disabled {
   .info-text {
     color: #95a5a6;
   }
+
+  .stop-time {
+    color: #3498db;
+  }
+
+  .stop-item.last-passed-stop {
+    background: linear-gradient(135deg, #27ae6033 0%, #2ecc7133 100%);
+  }
+
+  .delay-warning {
+    color: #e74c3c;
+  }
 }
 
 @media (max-width: 1200px) {
@@ -913,6 +925,15 @@ button:disabled {
   border-left: 4px solid #667eea;
 }
 
+.stop-item.last-passed-stop {
+  background: linear-gradient(135deg, #27ae6022 0%, #2ecc7122 100%);
+  border-left: 4px solid #27ae60;
+}
+
+.stop-item.last-passed-stop .stop-marker {
+  font-size: 24px;
+}
+
 .stop-marker {
   font-size: 20px;
   color: #95a5a6;
@@ -958,6 +979,18 @@ button:disabled {
   font-size: 12px;
   font-weight: 600;
   width: fit-content;
+}
+
+.stop-time {
+  font-size: 14px;
+  font-weight: 600;
+  color: #3498db;
+  margin-top: 2px;
+}
+
+.delay-warning {
+  color: #e74c3c;
+  font-weight: 600;
 }
 
 .react-datepicker__day-name:first-child {

@@ -256,7 +256,7 @@ pub struct TimeTableInfo {
 }
 
 // Bus Approach Info structures
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BusApproachInfo {
     pub result: String,
     pub bus_status: i32,
@@ -266,6 +266,35 @@ pub struct BusApproachInfo {
     pub last_delay_time: i32,
     pub update_time: String,
     pub barrier_free: i32,
+}
+
+// Get_busstop_timetable_list structures
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BusStopTimetableStation {
+    pub station_id: String,
+    pub station_name: String,
+    pub time: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BusStopTimetableLine {
+    pub line_id: i64,
+    pub line_name: String,
+    pub course_id: String,
+    pub course_name: String,
+    pub pos: i32,
+    pub note: String,
+    pub next_time: String,
+    pub before_time: String,
+    pub time: String,
+    pub station_id_name: String,
+    pub station: Vec<BusStopTimetableStation>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BusStopTimetableResponse {
+    pub result: String,
+    pub line: BusStopTimetableLine,
 }
 
 // Get_busstop_list structures - This is the key API!
@@ -974,6 +1003,92 @@ async fn get_bus_stops_data(
     Ok(data.station_data_list)
 }
 
+// Get bus approach info (real-time position and delay)
+#[tauri::command]
+async fn get_bus_approach_info(
+    course_id: String,
+    station_id: String,
+    time: String,
+) -> Result<BusApproachInfo, String> {
+    eprintln!("get_bus_approach_info called: course_id={}, station_id={}, time={}", course_id, station_id, time);
+
+    let client = reqwest::Client::new();
+    let params = [
+        ("kind", "0"),
+        ("course_id", &course_id),
+        ("station_id", &station_id),
+        ("time", &time),
+    ];
+
+    let response = client
+        .post("https://ekibus-api.city.sapporo.jp/Get_bus_approach_info")
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!("API request failed: {}", e);
+            format!("Failed to fetch approach info: {}", e)
+        })?;
+
+    let response_text = response.text().await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    eprintln!("API response: {}", response_text);
+
+    let data: BusApproachInfo = serde_json::from_str(&response_text)
+        .map_err(|e| {
+            eprintln!("JSON parse failed: {}", e);
+            format!("Failed to parse approach info: {}", e)
+        })?;
+
+    eprintln!("Parsed approach info: delay={}, last_stop={}", data.delay_time, data.last_stop);
+    Ok(data)
+}
+
+// Get bus timetable list with stop times
+#[tauri::command]
+async fn get_bus_timetable_list(
+    course_id: String,
+    station_id: String,
+    time: String,
+    end_st: String,
+) -> Result<BusStopTimetableResponse, String> {
+    eprintln!("get_bus_timetable_list called: course_id={}, station_id={}, time={}, end_st={}",
+              course_id, station_id, time, end_st);
+
+    let client = reqwest::Client::new();
+    let params = [
+        ("kind", "0"),
+        ("course_id", &course_id),
+        ("station_id", &station_id),
+        ("time", &time),
+        ("end_st", &end_st),
+        ("lang", ""),
+    ];
+
+    let response = client
+        .post("https://ekibus-api.city.sapporo.jp/Get_busstop_timetable_list")
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!("API request failed: {}", e);
+            format!("Failed to fetch timetable list: {}", e)
+        })?;
+
+    let response_text = response.text().await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    eprintln!("API response: {}", response_text);
+
+    let data: BusStopTimetableResponse = serde_json::from_str(&response_text)
+        .map_err(|e| {
+            eprintln!("JSON parse failed: {}", e);
+            format!("Failed to parse timetable list: {}", e)
+        })?;
+
+    eprintln!("Parsed timetable list: {} stops", data.line.station.len());
+    Ok(data)
+}
+
 // Get cached bus stops
 fn get_cached_bus_stops(
     app_handle: &tauri::AppHandle,
@@ -1138,7 +1253,9 @@ pub fn run() {
             delete_bus_stop,
             init_database,
             clear_timetable_cache,
-            get_bus_stops_data
+            get_bus_stops_data,
+            get_bus_approach_info,
+            get_bus_timetable_list
         ])
         .setup(|app| {
             // Initialize database on startup
