@@ -72,6 +72,8 @@ struct BusData {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BusSearchRequest {
+    pub start_station_id: Option<String>,
+    pub end_station_id: Option<String>,
     pub destination: Option<String>,
     pub time_from: Option<String>,
     pub time_to: Option<String>,
@@ -128,19 +130,124 @@ pub struct StationLineListResponse {
     pub station_list: Vec<Station>,
 }
 
+// Route Search API structures (for Get_search_route)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RouteListItem {
+    pub line_id: i64,
+    pub line_name: String,
+    pub company_id: String,
+    pub from_id: i64,
+    pub from_name: String,
+    pub to_id: i64,
+    pub to_name: String,
+    pub sec_time: i32,
+    pub fare: String,
+    pub c_fare: i32,
+    pub line_type: i32,
+    pub connect_time: i32,
+    pub connect_distance: i32,
+    pub connect_flag: i32,
+    pub service_count: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WalkData {
+    pub start_walk_time: i32,
+    pub start_walk_dist: i32,
+    pub goal_walk_time: i32,
+    pub goal_walk_dist: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RouteInfo {
+    pub total_time: i32,
+    pub total_connect_time: i32,
+    pub line_count: i32,
+    pub fare: i32,
+    pub c_fare: i32,
+    pub route_list: Vec<RouteListItem>,
+    pub pattern: String,
+    pub service_count: i32,
+    pub service_count_raw: i32,
+    pub service_frequency: i32,
+    pub walk_data: WalkData,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchRouteResponse {
+    pub result: String,
+    pub search_route: SearchRouteData,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchRouteData {
+    pub route: Vec<RouteInfo>,
+}
+
 // Tauri commands
 #[tauri::command]
 async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String> {
     let client = reqwest::Client::new();
 
-    // Build request body for bus location API
-    let mut body = serde_json::json!({
+    // If station IDs are provided, use Get_search_route API
+    if let (Some(start_id), Some(end_id)) = (&request.start_station_id, &request.end_station_id) {
+        let params = [
+            ("kind", "0"),
+            ("start_st", start_id.as_str()),
+            ("end_st", end_id.as_str()),
+            ("lat1", "-1"),
+            ("lon1", "-1"),
+            ("lat2", "-1"),
+            ("lon2", "-1"),
+            ("bus_prediction_flg", "1"),
+            ("sort_id", "1"),
+            ("lang", ""),
+            ("start_flg", "0"),
+            ("end_flg", "0"),
+        ];
+
+        let response = client
+            .post("https://ekibus-api.city.sapporo.jp/Get_search_route")
+            .form(&params)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch routes: {}", e))?;
+
+        let route_data: SearchRouteResponse = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        // Convert route data to BusInfo
+        let mut buses = Vec::new();
+
+        for route in route_data.search_route.route {
+            for segment in route.route_list {
+                let bus_info = BusInfo {
+                    bus_id: format!("{}", segment.line_id),
+                    route_name: segment.line_name.clone(),
+                    destination: segment.to_name.clone(),
+                    stop_id: segment.from_id.to_string(),
+                    stop_name: segment.from_name.clone(),
+                    arrival_time: None, // Route search doesn't provide arrival times
+                    delay_minutes: None,
+                    congestion_level: None,
+                    updated_at: chrono::Local::now().to_rfc3339(),
+                    latitude: None,
+                    longitude: None,
+                };
+                buses.push(bus_info);
+            }
+        }
+
+        return Ok(buses);
+    }
+
+    // Fallback to original bus location API
+    let body = serde_json::json!({
         "kind": "0",
         "lang": ""
     });
-
-    // If we have stop IDs from the request, use them
-    // For now, we'll fetch general bus data and filter later
 
     let response = client
         .post("https://ekibus-api.city.sapporo.jp/Get_busstop_lastdata")

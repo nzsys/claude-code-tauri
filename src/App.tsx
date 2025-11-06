@@ -179,9 +179,11 @@ function App() {
       const searchTime = useCurrentTime ? new Date() : selectedDateTime;
       const timeString = searchTime.toTimeString().slice(0, 5);
 
-      // Mock bus search - in real implementation, this would call the API
+      // Call route search API with station IDs
       const result = await invoke<BusInfo[]>("search_buses", {
         request: {
+          start_station_id: selectedDepartureStop.stop_id,
+          end_station_id: selectedArrivalStop.stop_id,
           destination: arrivalStation,
           time_from: timeString,
           time_to: null,
