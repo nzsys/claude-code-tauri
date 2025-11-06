@@ -259,6 +259,40 @@ pub struct BusApproachInfo {
     pub barrier_free: i32,
 }
 
+// Get_busstop_list structures - This is the key API!
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BusTimeInfo {
+    pub time: String,
+    pub start_time: String,
+    pub bus_status: i32,
+    pub last_stop: i64,
+    pub last_stop_order: i32,
+    pub delay_time: i32,
+    pub course_id: String,
+    pub note: String,
+    pub barrier_free: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BusStopListData {
+    pub line_id: i64,
+    pub line_name: String,
+    pub course_id: String,
+    pub course_id_name: String,
+    pub station_id: String,
+    pub station_id_name: String,
+    pub pos: i32,
+    pub stop_no: String,
+    pub terminal_flg: i32,
+    pub time_list: Vec<BusTimeInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BusStopListResponse {
+    pub result: String,
+    pub data: Vec<BusStopListData>,
+}
+
 // Tauri commands
 #[tauri::command]
 async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String> {
@@ -299,25 +333,6 @@ async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String>
         let current_time_str = current_time.format("%H:%M").to_string();
 
         for route in route_data.search_route.route {
-            // Get timetable for this route pattern
-            let timetable_params = [
-                ("kind", "0"),
-                ("pattern", route.pattern.as_str()),
-                ("lang", ""),
-            ];
-
-            let timetable_result = client
-                .post("https://ekibus-api.city.sapporo.jp/Get_search_route_timetable")
-                .form(&timetable_params)
-                .send()
-                .await;
-
-            let timetable_data = if let Ok(response) = timetable_result {
-                response.json::<SearchRouteTimetableResponse>().await.ok()
-            } else {
-                None
-            };
-
             for segment in route.route_list {
                 let mut bus_info = BusInfo {
                     bus_id: format!("{}", segment.line_id),
@@ -335,43 +350,47 @@ async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String>
 
                 // Only get real-time data for bus segments (line_type == 10 means bus)
                 if segment.line_type == 10 {
-                    if let Some(ref timetable) = timetable_data {
-                        if let Some(route_list) = timetable.search_route_timetable.time_table.route_list.first() {
-                            for dia in &route_list.dia_list {
-                                // Find next bus after current time
-                                if let Some(next_bus) = dia.time_table.iter()
-                                    .find(|entry| entry.from_time >= current_time_str) {
+                    // Use Get_busstop_list to get comprehensive real-time info
+                    let busstop_params = [
+                        ("kind", "0"),
+                        ("line_id", &segment.line_id.to_string()),
+                        ("station_id", &segment.from_id.to_string()),
+                        ("lang", ""),
+                    ];
 
-                                    bus_info.arrival_time = Some(next_bus.to_time.clone());
+                    if let Ok(busstop_response) = client
+                        .post("https://ekibus-api.city.sapporo.jp/Get_busstop_list")
+                        .form(&busstop_params)
+                        .send()
+                        .await {
 
-                                    // Get real-time bus approach info
-                                    let approach_params = [
-                                        ("kind", "0"),
-                                        ("course_id", &next_bus.course_id.to_string()),
-                                        ("station_id", &segment.from_id.to_string()),
-                                        ("time", &next_bus.from_time),
-                                    ];
+                        if let Ok(busstop_data) = busstop_response.json::<BusStopListResponse>().await {
+                            // Find the first bus arriving after current time
+                            for stop_data in busstop_data.data {
+                                if let Some(next_bus) = stop_data.time_list.iter()
+                                    .find(|bus| bus.time >= current_time_str) {
 
-                                    if let Ok(approach_response) = client
-                                        .post("https://ekibus-api.city.sapporo.jp/Get_bus_approach_info")
-                                        .form(&approach_params)
-                                        .send()
-                                        .await {
+                                    // Set arrival time
+                                    bus_info.arrival_time = Some(next_bus.time.clone());
 
-                                        if let Ok(approach_data) = approach_response.json::<BusApproachInfo>().await {
-                                            bus_info.delay_minutes = Some(approach_data.delay_time);
-                                            bus_info.updated_at = approach_data.update_time;
+                                    // Set delay time
+                                    bus_info.delay_minutes = Some(next_bus.delay_time);
 
-                                            // Map congestion level based on bus_status
-                                            bus_info.congestion_level = match approach_data.bus_status {
-                                                0 => Some("不明".to_string()),
-                                                1 => Some("空席あり".to_string()),
-                                                2 => Some("立席あり".to_string()),
-                                                3 => Some("混雑".to_string()),
-                                                _ => None,
-                                            };
-                                        }
-                                    }
+                                    // Map bus_status to congestion level
+                                    bus_info.congestion_level = match next_bus.bus_status {
+                                        0 => Some("運行前".to_string()),
+                                        1 => Some("空席あり".to_string()),
+                                        2 => Some("立席あり".to_string()),
+                                        3 => Some("混雑".to_string()),
+                                        4 => Some("満員".to_string()),
+                                        _ => Some("不明".to_string()),
+                                    };
+
+                                    // Update timestamp
+                                    bus_info.updated_at = chrono::Local::now().to_rfc3339();
+
+                                    // Note: last_stop can be used to estimate position
+                                    // We could potentially fetch station coordinates here
 
                                     break;
                                 }
