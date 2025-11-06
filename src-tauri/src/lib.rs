@@ -27,6 +27,47 @@ pub struct BusInfo {
     pub delay_minutes: Option<i32>,
     pub congestion_level: Option<String>,
     pub updated_at: String,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+}
+
+// API Response structures
+#[derive(Debug, Serialize, Deserialize)]
+struct BusLocationResponse {
+    result: String,
+    busstop_lastdata: Vec<BusStopLastData>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BusStopLastData {
+    station_id: i32,
+    station_name: String,
+    company_id: i32,
+    bus_list: Vec<BusData>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BusData {
+    #[serde(default)]
+    bus_id: String,
+    #[serde(default)]
+    line_id: i32,
+    #[serde(default)]
+    line_name: String,
+    #[serde(default)]
+    course_id: i32,
+    #[serde(default)]
+    course_name: String,
+    #[serde(default)]
+    time: String,
+    #[serde(default)]
+    delay_time: String,
+    #[serde(default)]
+    congestion: String,
+    #[serde(default)]
+    lat: String,
+    #[serde(default)]
+    lon: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -89,23 +130,98 @@ pub struct StationLineListResponse {
 
 // Tauri commands
 #[tauri::command]
-async fn search_buses(_request: BusSearchRequest) -> Result<Vec<BusInfo>, String> {
-    // For now, return mock data
-    // TODO: Implement actual API call
-    let mock_buses = vec![
-        BusInfo {
-            bus_id: "1".to_string(),
-            route_name: "中央線".to_string(),
-            destination: "札幌駅".to_string(),
-            stop_id: "001".to_string(),
-            stop_name: "大通駅".to_string(),
-            arrival_time: Some("10:30".to_string()),
-            delay_minutes: Some(2),
-            congestion_level: Some("中".to_string()),
-            updated_at: chrono::Local::now().to_rfc3339(),
-        },
-    ];
-    Ok(mock_buses)
+async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String> {
+    let client = reqwest::Client::new();
+
+    // Build request body for bus location API
+    let mut body = serde_json::json!({
+        "kind": "0",
+        "lang": ""
+    });
+
+    // If we have stop IDs from the request, use them
+    // For now, we'll fetch general bus data and filter later
+
+    let response = client
+        .post("https://ekibus-api.city.sapporo.jp/Get_busstop_lastdata")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch bus data: {}", e))?;
+
+    let data: BusLocationResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    // Convert API response to BusInfo
+    let mut buses = Vec::new();
+
+    for stop_data in data.busstop_lastdata {
+        for bus in stop_data.bus_list {
+            // Parse coordinates
+            let latitude = bus.lat.parse::<f64>().ok();
+            let longitude = bus.lon.parse::<f64>().ok();
+
+            // Parse delay time
+            let delay_minutes = if !bus.delay_time.is_empty() {
+                bus.delay_time.parse::<i32>().ok()
+            } else {
+                Some(0)
+            };
+
+            // Map congestion level
+            let congestion_level = if !bus.congestion.is_empty() {
+                Some(bus.congestion.clone())
+            } else {
+                None
+            };
+
+            let bus_info = BusInfo {
+                bus_id: if bus.bus_id.is_empty() {
+                    format!("{}-{}", bus.line_id, bus.course_id)
+                } else {
+                    bus.bus_id
+                },
+                route_name: bus.line_name.clone(),
+                destination: bus.course_name.clone(),
+                stop_id: stop_data.station_id.to_string(),
+                stop_name: stop_data.station_name.clone(),
+                arrival_time: if !bus.time.is_empty() {
+                    Some(bus.time)
+                } else {
+                    None
+                },
+                delay_minutes,
+                congestion_level,
+                updated_at: chrono::Local::now().to_rfc3339(),
+                latitude,
+                longitude,
+            };
+
+            // Filter by destination if provided
+            if let Some(ref dest) = request.destination {
+                if bus_info.destination.contains(dest) || bus_info.route_name.contains(dest) {
+                    buses.push(bus_info);
+                }
+            } else {
+                buses.push(bus_info);
+            }
+        }
+    }
+
+    // Filter by time if provided
+    if let Some(time_from) = request.time_from {
+        buses.retain(|bus| {
+            if let Some(ref arrival) = bus.arrival_time {
+                arrival >= &time_from
+            } else {
+                false
+            }
+        });
+    }
+
+    Ok(buses)
 }
 
 #[tauri::command]

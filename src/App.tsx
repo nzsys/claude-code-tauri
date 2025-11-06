@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import BusMap from "./BusMap";
 import "./App.css";
 
 interface BusInfo {
@@ -14,6 +15,8 @@ interface BusInfo {
   delay_minutes: number | null;
   congestion_level: string | null;
   updated_at: string;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 interface BusStop {
@@ -372,48 +375,66 @@ function App() {
       {/* Bus Results */}
       {buses.length > 0 && (
         <div className="results-section">
-          <h2>バス一覧</h2>
-          <div className="bus-list">
-            {buses.map((bus) => (
-              <div key={bus.bus_id} className="bus-card">
-                <div className="bus-header">
-                  <h3>{bus.route_name}</h3>
-                  <span className="destination">{bus.destination}行き</span>
-                </div>
-                <div className="bus-details">
-                  <div className="detail-item">
-                    <span className="label">バス停:</span>
-                    <span>{bus.stop_name}</span>
+          <h2>バス一覧と現在地</h2>
+          <div className="results-layout">
+            {/* Bus List */}
+            <div className="bus-list-container">
+              <h3>バス一覧 ({buses.length}件)</h3>
+              <div className="bus-list">
+                {buses.map((bus) => (
+                  <div key={bus.bus_id} className="bus-card">
+                    <div className="bus-header">
+                      <h3>{bus.route_name}</h3>
+                      <span className="destination">{bus.destination}行き</span>
+                    </div>
+                    <div className="bus-details">
+                      <div className="detail-item">
+                        <span className="label">バス停:</span>
+                        <span>{bus.stop_name}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="label">到着予定:</span>
+                        <span>{bus.arrival_time || "情報なし"}</span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="label">遅延状況:</span>
+                        <span className="delay-info">
+                          {getDelayText(bus.delay_minutes)}
+                        </span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="label">混雑度:</span>
+                        <span
+                          className="congestion-badge"
+                          style={{
+                            backgroundColor: getCongestionColor(
+                              bus.congestion_level
+                            ),
+                          }}
+                        >
+                          {bus.congestion_level || "不明"}
+                        </span>
+                      </div>
+                      {bus.latitude && bus.longitude && (
+                        <div className="detail-item">
+                          <span className="label">位置:</span>
+                          <span className="location-badge">📍 地図に表示中</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="bus-footer">
+                      <small>更新: {new Date(bus.updated_at).toLocaleString("ja-JP")}</small>
+                    </div>
                   </div>
-                  <div className="detail-item">
-                    <span className="label">到着予定:</span>
-                    <span>{bus.arrival_time || "情報なし"}</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">遅延状況:</span>
-                    <span className="delay-info">
-                      {getDelayText(bus.delay_minutes)}
-                    </span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">混雑度:</span>
-                    <span
-                      className="congestion-badge"
-                      style={{
-                        backgroundColor: getCongestionColor(
-                          bus.congestion_level
-                        ),
-                      }}
-                    >
-                      {bus.congestion_level || "不明"}
-                    </span>
-                  </div>
-                </div>
-                <div className="bus-footer">
-                  <small>更新: {new Date(bus.updated_at).toLocaleString("ja-JP")}</small>
-                </div>
+                ))}
               </div>
-            ))}
+            </div>
+
+            {/* Map */}
+            <div className="map-section">
+              <h3>バス現在地マップ</h3>
+              <BusMap buses={buses} />
+            </div>
           </div>
         </div>
       )}
