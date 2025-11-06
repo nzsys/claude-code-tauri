@@ -184,6 +184,81 @@ pub struct SearchRouteData {
     pub route: Vec<RouteInfo>,
 }
 
+// Timetable API structures
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TimeTableEntry {
+    pub from_time: String,
+    pub to_time: String,
+    pub note: String,
+    pub fromto: String,
+    pub course_id: i64,
+    pub connect_index: i32,
+    pub prev_index: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DiaList {
+    pub dia_flg: i32,
+    pub time_table: Vec<TimeTableEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TimetableCourse {
+    pub course_id: i64,
+    pub course_name: String,
+    pub line_id: i64,
+    pub line_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RouteListForTimetable {
+    pub line_id: String,
+    pub from_id: String,
+    pub to_id: String,
+    pub connect_time: i32,
+    pub connect_distance: i32,
+    pub line_name: String,
+    pub from_name: String,
+    pub to_name: String,
+    pub course_list: Vec<TimetableCourse>,
+    pub dia_list: Vec<DiaList>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchRouteTimetableResponse {
+    pub result: String,
+    pub search_route_timetable: SearchRouteTimetableData,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchRouteTimetableData {
+    pub time_table: TimeTableInfo,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TimeTableInfo {
+    pub from_id: String,
+    pub to_id: String,
+    pub pattern: String,
+    pub from_name: String,
+    pub to_name: String,
+    pub day_type: i32,
+    pub route_list: Vec<RouteListForTimetable>,
+}
+
+// Bus Approach Info structures
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BusApproachInfo {
+    pub result: String,
+    pub bus_status: i32,
+    pub last_stop: i64,
+    pub last_stop_order: i32,
+    pub delay_time: i32,
+    pub last_delay_time: i32,
+    pub update_time: String,
+    pub barrier_free: i32,
+}
+
 // Tauri commands
 #[tauri::command]
 async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String> {
@@ -218,24 +293,93 @@ async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String>
             .await
             .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-        // Convert route data to BusInfo
+        // Convert route data to BusInfo with enhanced real-time data
         let mut buses = Vec::new();
+        let current_time = chrono::Local::now();
+        let current_time_str = current_time.format("%H:%M").to_string();
 
         for route in route_data.search_route.route {
+            // Get timetable for this route pattern
+            let timetable_params = [
+                ("kind", "0"),
+                ("pattern", route.pattern.as_str()),
+                ("lang", ""),
+            ];
+
+            let timetable_result = client
+                .post("https://ekibus-api.city.sapporo.jp/Get_search_route_timetable")
+                .form(&timetable_params)
+                .send()
+                .await;
+
+            let timetable_data = if let Ok(response) = timetable_result {
+                response.json::<SearchRouteTimetableResponse>().await.ok()
+            } else {
+                None
+            };
+
             for segment in route.route_list {
-                let bus_info = BusInfo {
+                let mut bus_info = BusInfo {
                     bus_id: format!("{}", segment.line_id),
                     route_name: segment.line_name.clone(),
                     destination: segment.to_name.clone(),
                     stop_id: segment.from_id.to_string(),
                     stop_name: segment.from_name.clone(),
-                    arrival_time: None, // Route search doesn't provide arrival times
+                    arrival_time: None,
                     delay_minutes: None,
                     congestion_level: None,
                     updated_at: chrono::Local::now().to_rfc3339(),
                     latitude: None,
                     longitude: None,
                 };
+
+                // Only get real-time data for bus segments (line_type == 10 means bus)
+                if segment.line_type == 10 {
+                    if let Some(ref timetable) = timetable_data {
+                        if let Some(route_list) = timetable.search_route_timetable.time_table.route_list.first() {
+                            for dia in &route_list.dia_list {
+                                // Find next bus after current time
+                                if let Some(next_bus) = dia.time_table.iter()
+                                    .find(|entry| entry.from_time >= current_time_str) {
+
+                                    bus_info.arrival_time = Some(next_bus.to_time.clone());
+
+                                    // Get real-time bus approach info
+                                    let approach_params = [
+                                        ("kind", "0"),
+                                        ("course_id", &next_bus.course_id.to_string()),
+                                        ("station_id", &segment.from_id.to_string()),
+                                        ("time", &next_bus.from_time),
+                                    ];
+
+                                    if let Ok(approach_response) = client
+                                        .post("https://ekibus-api.city.sapporo.jp/Get_bus_approach_info")
+                                        .form(&approach_params)
+                                        .send()
+                                        .await {
+
+                                        if let Ok(approach_data) = approach_response.json::<BusApproachInfo>().await {
+                                            bus_info.delay_minutes = Some(approach_data.delay_time);
+                                            bus_info.updated_at = approach_data.update_time;
+
+                                            // Map congestion level based on bus_status
+                                            bus_info.congestion_level = match approach_data.bus_status {
+                                                0 => Some("不明".to_string()),
+                                                1 => Some("空席あり".to_string()),
+                                                2 => Some("立席あり".to_string()),
+                                                3 => Some("混雑".to_string()),
+                                                _ => None,
+                                            };
+                                        }
+                                    }
+
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 buses.push(bus_info);
             }
         }
