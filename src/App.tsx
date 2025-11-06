@@ -16,7 +16,6 @@ interface BusInfo {
   stop_name: string;
   arrival_time: string | null;
   delay_minutes: number | null;
-  congestion_level: string | null;
   updated_at: string;
   latitude: number | null;
   longitude: number | null;
@@ -228,8 +227,64 @@ function App() {
         },
       });
 
+      // Fetch real-time approach info for each bus in parallel
+      const busesWithApproachInfo = await Promise.all(
+        result.map(async (bus) => {
+          // Only fetch approach info if we have required parameters
+          if (!bus.course_id || !bus.arrival_time) {
+            return bus;
+          }
+
+          try {
+            // Fetch approach info and stop list in parallel
+            const [approachResult, stopsResult] = await Promise.allSettled([
+              invoke<BusApproachInfo>("get_bus_approach_info", {
+                courseId: bus.course_id,
+                stationId: bus.stop_id,
+                time: bus.arrival_time,
+              }),
+              invoke<StationData[]>("get_bus_stops_data", {
+                courseId: bus.course_id,
+                stationId: bus.stop_id,
+                endSt: bus.end_station_id || "",
+              }),
+            ]);
+
+            let updatedBus = { ...bus };
+
+            // Process approach info
+            if (approachResult.status === "fulfilled") {
+              const approachInfo = approachResult.value;
+              updatedBus.delay_minutes = approachInfo.delay_time;
+
+              // Calculate stops away and find last stop name
+              if (stopsResult.status === "fulfilled") {
+                const stops = stopsResult.value;
+                const lastStopData = stops.find(s => s.station_id === String(approachInfo.last_stop));
+                if (lastStopData) {
+                  updatedBus.last_stop_name = lastStopData.name;
+                }
+
+                // Calculate stops away: find positions
+                const currentStopIndex = stops.findIndex(s => s.station_id === String(approachInfo.last_stop));
+                const boardingStopIndex = stops.findIndex(s => s.station_id === bus.stop_id);
+
+                if (currentStopIndex !== -1 && boardingStopIndex !== -1 && boardingStopIndex > currentStopIndex) {
+                  updatedBus.stops_away = boardingStopIndex - currentStopIndex;
+                }
+              }
+            }
+
+            return updatedBus;
+          } catch (error) {
+            console.warn(`Failed to fetch approach info for bus ${bus.bus_id}:`, error);
+            return bus;
+          }
+        })
+      );
+
       // Sort buses by arrival time (earliest first)
-      const sortedBuses = result.sort((a, b) => {
+      const sortedBuses = busesWithApproachInfo.sort((a, b) => {
         // Buses without arrival time go to the end
         if (!a.arrival_time && !b.arrival_time) return 0;
         if (!a.arrival_time) return 1;
@@ -247,20 +302,6 @@ function App() {
       setError(`検索に失敗しました: ${err}`);
     } finally {
       setLoading(false);
-    }
-  }
-
-  function getCongestionColor(level: string | null): string {
-    if (!level) return "gray";
-    switch (level) {
-      case "低":
-        return "green";
-      case "中":
-        return "orange";
-      case "高":
-        return "red";
-      default:
-        return "gray";
     }
   }
 
@@ -593,19 +634,6 @@ function App() {
                         <span className="label">遅延状況:</span>
                         <span className="delay-info">
                           {getDelayText(bus.delay_minutes)}
-                        </span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="label">混雑度:</span>
-                        <span
-                          className="congestion-badge"
-                          style={{
-                            backgroundColor: getCongestionColor(
-                              bus.congestion_level
-                            ),
-                          }}
-                        >
-                          {bus.congestion_level || "不明"}
                         </span>
                       </div>
                       {bus.estimated_minutes !== null && (

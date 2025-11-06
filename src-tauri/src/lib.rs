@@ -29,7 +29,6 @@ pub struct BusInfo {
     pub stop_name: String,
     pub arrival_time: Option<String>,
     pub delay_minutes: Option<i32>,
-    pub congestion_level: Option<String>,
     pub updated_at: String,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
@@ -400,7 +399,6 @@ async fn search_buses(
                     stop_name: segment.from_name.clone(),
                     arrival_time: None,
                     delay_minutes: None,
-                    congestion_level: None,
                     updated_at: chrono::Local::now().to_rfc3339(),
                     latitude: None,
                     longitude: None,
@@ -442,16 +440,6 @@ async fn search_buses(
 
                                         // Set delay time
                                         bus_info.delay_minutes = Some(next_bus.delay_time);
-
-                                        // Map bus_status to congestion level
-                                        bus_info.congestion_level = match next_bus.bus_status {
-                                            0 => Some("運行前".to_string()),
-                                            1 => Some("空席あり".to_string()),
-                                            2 => Some("立席あり".to_string()),
-                                            3 => Some("混雑".to_string()),
-                                            4 => Some("満員".to_string()),
-                                            _ => Some("不明".to_string()),
-                                        };
 
                                         // Update timestamp
                                         bus_info.updated_at = chrono::Local::now().to_rfc3339();
@@ -635,13 +623,6 @@ async fn search_buses(
                 Some(0)
             };
 
-            // Map congestion level
-            let congestion_level = if !bus.congestion.is_empty() {
-                Some(bus.congestion.clone())
-            } else {
-                None
-            };
-
             let bus_info = BusInfo {
                 bus_id: if bus.bus_id.is_empty() {
                     format!("{}-{}", bus.line_id, bus.course_id)
@@ -658,7 +639,6 @@ async fn search_buses(
                     None
                 },
                 delay_minutes,
-                congestion_level,
                 updated_at: chrono::Local::now().to_rfc3339(),
                 latitude,
                 longitude,
