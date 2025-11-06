@@ -36,6 +36,8 @@ pub struct BusInfo {
     pub stops_away: Option<i32>,
     pub estimated_minutes: Option<i32>,
     pub last_stop_name: Option<String>,
+    pub course_id: String,
+    pub end_station_id: Option<String>,
 }
 
 // API Response structures
@@ -298,6 +300,23 @@ pub struct BusStopListData {
 pub struct BusStopListResponse {
     pub result: String,
     pub data: Vec<BusStopListData>,
+}
+
+// Bus stop list API structures (for Get_busstop_lastdata)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StationData {
+    pub station_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BusStopLastDataResponse {
+    pub result: String,
+    pub start_pos: i32,
+    pub end_pos: i32,
+    pub course_id: String,
+    pub station_last_id: String,
+    pub station_data_list: Vec<StationData>,
 }
 
 // Tauri commands
@@ -635,6 +654,8 @@ async fn search_buses(
                 stops_away: None,
                 estimated_minutes: None,
                 last_stop_name: None,
+                course_id: bus.course_id.clone(),
+                end_station_id: request.end_station_id.clone(),
             };
 
             // Filter by destination if provided
@@ -902,13 +923,112 @@ async fn clear_timetable_cache(app_handle: tauri::AppHandle) -> Result<(), Strin
     let conn = get_db_connection(&app_handle)?;
 
     conn.execute("DELETE FROM timetable_cache", [])
-        .map_err(|e| format!("Failed to clear cache: {}", e))?;
+        .map_err(|e| format!("Failed to clear timetable cache: {}", e))?;
+
+    conn.execute("DELETE FROM bus_stop_cache", [])
+        .map_err(|e| format!("Failed to clear bus stop cache: {}", e))?;
 
     conn.execute(
         "INSERT OR REPLACE INTO cache_metadata (key, value, updated_at)
          VALUES ('last_cleared', datetime('now'), datetime('now'))",
         [],
     ).map_err(|e| format!("Failed to update metadata: {}", e))?;
+
+    Ok(())
+}
+
+// Get bus stops from cache or API
+#[tauri::command]
+async fn get_bus_stops_data(
+    app_handle: tauri::AppHandle,
+    course_id: String,
+    station_id: String,
+    end_st: String,
+) -> Result<Vec<StationData>, String> {
+    // Try cache first
+    if let Ok(cached_stops) = get_cached_bus_stops(&app_handle, &course_id, &station_id, &end_st) {
+        return Ok(cached_stops);
+    }
+
+    // Fetch from API
+    let client = reqwest::Client::new();
+    let params = [
+        ("kind", "0"),
+        ("course_id", &course_id),
+        ("station_id", &station_id),
+        ("end_st", &end_st),
+        ("lang", ""),
+    ];
+
+    let response = client
+        .post("https://ekibus-api.city.sapporo.jp/Get_busstop_lastdata")
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch bus stops: {}", e))?;
+
+    let data: BusStopLastDataResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse bus stops response: {}", e))?;
+
+    // Save to cache
+    let _ = save_bus_stops_to_cache(&app_handle, &course_id, &station_id, &end_st, &data);
+
+    Ok(data.station_data_list)
+}
+
+// Get cached bus stops
+fn get_cached_bus_stops(
+    app_handle: &tauri::AppHandle,
+    course_id: &str,
+    station_id: &str,
+    end_st: &str,
+) -> Result<Vec<StationData>, String> {
+    let conn = get_db_connection(app_handle)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT station_data_json FROM bus_stop_cache
+         WHERE course_id = ?1 AND station_id = ?2 AND end_st = ?3"
+    ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
+
+    let json_str: String = stmt.query_row(params![course_id, station_id, end_st], |row| {
+        row.get(0)
+    }).map_err(|_| "No cached data found".to_string())?;
+
+    let stops: Vec<StationData> = serde_json::from_str(&json_str)
+        .map_err(|e| format!("Failed to parse cached stops: {}", e))?;
+
+    Ok(stops)
+}
+
+// Save bus stops to cache
+fn save_bus_stops_to_cache(
+    app_handle: &tauri::AppHandle,
+    course_id: &str,
+    station_id: &str,
+    end_st: &str,
+    data: &BusStopLastDataResponse,
+) -> Result<(), String> {
+    let conn = get_db_connection(app_handle)?;
+
+    let json_str = serde_json::to_string(&data.station_data_list)
+        .map_err(|e| format!("Failed to serialize stops: {}", e))?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO bus_stop_cache
+         (course_id, station_id, end_st, start_pos, end_pos, station_last_id, station_data_json)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            course_id,
+            station_id,
+            end_st,
+            data.start_pos,
+            data.end_pos,
+            &data.station_last_id,
+            json_str,
+        ],
+    ).map_err(|e| format!("Failed to save bus stops to cache: {}", e))?;
 
     Ok(())
 }
@@ -966,6 +1086,31 @@ async fn init_database(app_handle: tauri::AppHandle) -> Result<(), String> {
     )
     .map_err(|e| format!("Failed to create cache_metadata table: {}", e))?;
 
+    // Create bus stop cache table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS bus_stop_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            course_id TEXT NOT NULL,
+            station_id TEXT NOT NULL,
+            end_st TEXT NOT NULL,
+            start_pos INTEGER NOT NULL,
+            end_pos INTEGER NOT NULL,
+            station_last_id TEXT NOT NULL,
+            station_data_json TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .map_err(|e| format!("Failed to create bus_stop_cache table: {}", e))?;
+
+    // Create index for bus stop cache
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_bus_stop_route
+            ON bus_stop_cache(course_id, station_id, end_st)",
+        [],
+    )
+    .map_err(|e| format!("Failed to create bus stop index: {}", e))?;
+
     // Store database path in app state
     if let Some(state) = app_handle.try_state::<AppState>() {
         if let Ok(mut db_path_lock) = state.db_path.lock() {
@@ -996,7 +1141,8 @@ pub fn run() {
             get_saved_bus_stops,
             delete_bus_stop,
             init_database,
-            clear_timetable_cache
+            clear_timetable_cache,
+            get_bus_stops_data
         ])
         .setup(|app| {
             // Initialize database on startup

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import DatePicker, { registerLocale } from "react-datepicker";
 import { ja } from "date-fns/locale";
 import "react-datepicker/dist/react-datepicker.css";
-import BusMap from "./BusMap";
+// import BusMap from "./BusMap";
 import "./App.css";
 
 registerLocale("ja", ja);
@@ -23,6 +23,13 @@ interface BusInfo {
   stops_away: number | null;
   estimated_minutes: number | null;
   last_stop_name: string | null;
+  course_id: string;
+  end_station_id: string | null;
+}
+
+interface StationData {
+  station_id: string;
+  name: string;
 }
 
 interface BusStop {
@@ -64,6 +71,8 @@ function App() {
   // Bus detail modal
   const [selectedBus, setSelectedBus] = useState<BusInfo | null>(null);
   const [showBusDetail, setShowBusDetail] = useState(false);
+  const [busStops, setBusStops] = useState<StationData[]>([]);
+  const [loadingStops, setLoadingStops] = useState(false);
 
   useEffect(() => {
     loadSavedStops();
@@ -241,9 +250,27 @@ function App() {
     }
   }
 
-  function openBusDetail(bus: BusInfo) {
+  async function openBusDetail(bus: BusInfo) {
     setSelectedBus(bus);
     setShowBusDetail(true);
+    setBusStops([]);
+
+    // Only fetch stops if we have the required parameters
+    if (bus.course_id && bus.end_station_id) {
+      setLoadingStops(true);
+      try {
+        const stops = await invoke<StationData[]>("get_bus_stops_data", {
+          courseId: bus.course_id,
+          stationId: bus.stop_id,
+          endSt: bus.end_station_id,
+        });
+        setBusStops(stops);
+      } catch (err) {
+        console.error("Failed to load bus stops:", err);
+      } finally {
+        setLoadingStops(false);
+      }
+    }
   }
 
   function closeBusDetail() {
@@ -566,7 +593,32 @@ function App() {
               </div>
               <div className="bus-stops-timeline">
                 <h3>停留所一覧</h3>
-                <p className="info-text">※ 停留所の詳細情報は今後実装予定です</p>
+                {loadingStops ? (
+                  <p className="info-text">読み込み中...</p>
+                ) : busStops.length > 0 ? (
+                  <div className="stops-list">
+                    {busStops.map((stop) => (
+                      <div
+                        key={stop.station_id}
+                        className={`stop-item ${
+                          stop.station_id === selectedBus.stop_id ? "current-stop" : ""
+                        }`}
+                      >
+                        <div className="stop-marker">
+                          {stop.station_id === selectedBus.stop_id ? "●" : "○"}
+                        </div>
+                        <div className="stop-info">
+                          <div className="stop-name">{stop.name}</div>
+                          {stop.station_id === selectedBus.stop_id && (
+                            <div className="stop-label">現在地</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="info-text">停留所情報が取得できませんでした</p>
+                )}
               </div>
             </div>
           </div>

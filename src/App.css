@@ -848,6 +848,77 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Bus Stops Timeline */
+.stops-list {
+  margin-top: 16px;
+  position: relative;
+}
+
+.stop-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+.stop-item:hover {
+  background-color: #f8f9fa;
+}
+
+.stop-item.current-stop {
+  background: linear-gradient(135deg, #667eea22 0%, #764ba222 100%);
+  border-left: 4px solid #667eea;
+}
+
+.stop-marker {
+  font-size: 20px;
+  color: #95a5a6;
+  position: relative;
+  z-index: 1;
+}
+
+.stop-item.current-stop .stop-marker {
+  color: #667eea;
+  font-size: 24px;
+}
+
+.stop-item:not(:last-child) .stop-marker::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 2px;
+  height: 44px;
+  background: #e0e0e0;
+  transform: translateX(-50%);
+}
+
+.stop-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stop-name {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 15px;
+}
+
+.stop-label {
+  display: inline-block;
+  padding: 4px 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  width: fit-content;
+}
+
 .react-datepicker__day-name:first-child {
   color: #e74c3c;
 }
