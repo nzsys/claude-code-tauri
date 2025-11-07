@@ -32,7 +32,7 @@ pub struct BusSearchRequest {
 
 // Tauri commands
 #[tauri::command]
-async fn search_buses(request: BusSearchRequest) -> Result<Vec<BusInfo>, String> {
+async fn search_buses(_request: BusSearchRequest) -> Result<Vec<BusInfo>, String> {
     // For now, return mock data
     // TODO: Implement actual API call
     let mock_buses = vec![
