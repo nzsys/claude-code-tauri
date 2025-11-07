@@ -79,11 +79,22 @@ h2 {
   margin-bottom: 20px;
 }
 
+.datetime-group {
+  margin-top: 8px;
+  margin-bottom: 20px;
+}
+
 .form-group label {
   display: block;
   margin-bottom: 8px;
   font-weight: 600;
   color: #2c3e50;
+}
+
+.input-label-small {
+  font-size: 0.85em;
+  margin-bottom: 6px;
+  color: #7f8c8d;
 }
 
 input[type="text"],
@@ -111,16 +122,11 @@ input[type="time"]:focus {
   margin-top: 8px;
 }
 
-.toggle-label {
+.toggle-current-state {
   font-size: 0.95em;
-  color: #7f8c8d;
-  font-weight: 500;
-  transition: all 0.3s ease;
-}
-
-.toggle-label.active {
   color: #2c3e50;
   font-weight: 600;
+  transition: all 0.3s ease;
 }
 
 .toggle-switch {
@@ -179,6 +185,7 @@ input[type="time"]:focus {
   display: flex;
   gap: 10px;
   margin-top: 20px;
+  justify-content: center;
 }
 
 button {
@@ -718,9 +725,21 @@ button:disabled {
     border-color: #445566;
   }
 
+  .input-label-small {
+    color: #bdc3c7;
+  }
+
+  .toggle-current-state {
+    color: #ecf0f1;
+  }
+
   .bus-stop-item {
     background: #34495e;
     color: white;
+  }
+
+  .bus-stop-item .stop-name {
+    color: #ffffff;
   }
 
   .detail-item {
@@ -758,8 +777,31 @@ button:disabled {
     color: #ecf0f1;
   }
 
+  .suggestions-dropdown {
+    background: #34495e;
+    border-color: #3498db;
+  }
+
+  .suggestions-header {
+    background: #3498db;
+    color: white;
+  }
+
   .suggestion-item {
     color: #ecf0f1;
+    border-bottom-color: #445566;
+  }
+
+  .suggestion-item:hover {
+    background: #445566;
+  }
+
+  .suggestion-item.saved {
+    background: #2d5f3e;
+  }
+
+  .suggestion-item.saved:hover {
+    background: #3a7a50;
   }
 
   .bus-search {

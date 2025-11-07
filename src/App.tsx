@@ -494,7 +494,7 @@ function App() {
         <form onSubmit={searchBuses}>
           {/* Departure Station */}
           <div className="form-group">
-            <label htmlFor="departure">乗車駅:</label>
+            <label htmlFor="departure" className="input-label-small">乗車駅</label>
             <div className="autocomplete-wrapper">
               <input
                 id="departure"
@@ -554,7 +554,7 @@ function App() {
 
           {/* Arrival Station */}
           <div className="form-group">
-            <label htmlFor="arrival">降車駅:</label>
+            <label htmlFor="arrival" className="input-label-small">降車駅</label>
             <div className="autocomplete-wrapper">
               <input
                 id="arrival"
@@ -604,7 +604,6 @@ function App() {
           <div className="form-group">
             <label htmlFor="time-mode">出発時刻:</label>
             <div className="toggle-switch-container">
-              <span className={`toggle-label ${useCurrentTime ? 'active' : ''}`}>現在時刻</span>
               <div className="toggle-switch" onClick={() => setUseCurrentTime(!useCurrentTime)}>
                 <input
                   type="checkbox"
@@ -614,12 +613,12 @@ function App() {
                 />
                 <span className="toggle-slider"></span>
               </div>
-              <span className={`toggle-label ${!useCurrentTime ? 'active' : ''}`}>指定日時</span>
+              <span className="toggle-current-state">{useCurrentTime ? '現在時刻' : '指定日時'}</span>
             </div>
           </div>
 
           {!useCurrentTime && (
-            <div className="form-group">
+            <div className="form-group datetime-group">
               <label htmlFor="datetime">日時を指定:</label>
               <DatePicker
                 selected={selectedDateTime}
