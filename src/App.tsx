@@ -22,9 +22,10 @@ interface BusStop {
 }
 
 function App() {
-  const [destination, setDestination] = useState("");
-  const [timeFrom, setTimeFrom] = useState("");
-  const [timeTo, setTimeTo] = useState("");
+  const [fromStopId, setFromStopId] = useState("");
+  const [toStopId, setToStopId] = useState("");
+  const [useCustomTime, setUseCustomTime] = useState(false);
+  const [customDateTime, setCustomDateTime] = useState("");
   const [buses, setBuses] = useState<BusInfo[]>([]);
   const [busStops, setBusStops] = useState<BusStop[]>([]);
   const [loading, setLoading] = useState(false);
@@ -49,11 +50,13 @@ function App() {
     setError("");
 
     try {
+      // For now, using the old API structure
+      // TODO: Update backend to handle from/to stops
       const result = await invoke<BusInfo[]>("search_buses", {
         request: {
-          destination: destination || null,
-          time_from: timeFrom || null,
-          time_to: timeTo || null,
+          destination: null,
+          time_from: null,
+          time_to: null,
         },
       });
       setBuses(result);
@@ -111,42 +114,69 @@ function App() {
         <h2>バス検索</h2>
         <form onSubmit={searchBuses}>
           <div className="form-group">
-            <label htmlFor="destination">目的地:</label>
-            <input
-              id="destination"
-              type="text"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              placeholder="例: 札幌駅"
-            />
+            <label htmlFor="from-stop" className="input-label">乗車駅</label>
+            <select
+              id="from-stop"
+              value={fromStopId}
+              onChange={(e) => setFromStopId(e.target.value)}
+              className="stop-select"
+            >
+              <option value="">乗車駅を選択してください</option>
+              {busStops.map((stop) => (
+                <option key={stop.stop_id} value={stop.stop_id}>
+                  {stop.stop_name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="form-group">
-            <label htmlFor="time-from">開始時刻:</label>
-            <input
-              id="time-from"
-              type="time"
-              value={timeFrom}
-              onChange={(e) => setTimeFrom(e.target.value)}
-            />
+            <label htmlFor="to-stop" className="input-label">下車駅</label>
+            <select
+              id="to-stop"
+              value={toStopId}
+              onChange={(e) => setToStopId(e.target.value)}
+              className="stop-select"
+            >
+              <option value="">下車駅を選択してください</option>
+              {busStops.map((stop) => (
+                <option key={stop.stop_id} value={stop.stop_id}>
+                  {stop.stop_name}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <div className="form-group">
-            <label htmlFor="time-to">終了時刻:</label>
-            <input
-              id="time-to"
-              type="time"
-              value={timeTo}
-              onChange={(e) => setTimeTo(e.target.value)}
-            />
+          <div className="time-mode-section">
+            <div className="time-switch-wrapper">
+              <label className="switch">
+                <input
+                  type="checkbox"
+                  checked={useCustomTime}
+                  onChange={(e) => setUseCustomTime(e.target.checked)}
+                />
+                <span className="slider"></span>
+              </label>
+              <span className="time-mode-label">
+                {useCustomTime ? "指定日時" : "現在時刻"}
+              </span>
+            </div>
+
+            {useCustomTime && (
+              <div className="form-group custom-time-input">
+                <input
+                  type="datetime-local"
+                  value={customDateTime}
+                  onChange={(e) => setCustomDateTime(e.target.value)}
+                  className="datetime-input"
+                />
+              </div>
+            )}
           </div>
 
-          <div className="button-group">
-            <button type="submit" disabled={loading}>
-              {loading ? "検索中..." : "検索"}
-            </button>
-            <button type="button" onClick={fetchLiveData} disabled={loading}>
-              リアルタイムデータ取得
+          <div className="button-group-center">
+            <button type="submit" disabled={loading} className="search-button">
+              {loading ? "検索中..." : "バスを検索"}
             </button>
           </div>
         </form>
